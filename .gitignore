@@ -1,0 +1,17 @@
+node_modules/
+out/
+release/
+dist/
+*.log
+.DS_Store
+test-fixtures/**/target/
+examples/**/target/
+keycloak-*/
+# perfis compostos gerados pela app (pessoais)
+**/application-local-mix.*
+# os exemplos são repositórios próprios (github.com/carnehd/<nome>); o Keycloak e ficheiros gerados ficam de fora
+examples/
+.claude/
+/application-*.yml
+*.zip
+*.7z

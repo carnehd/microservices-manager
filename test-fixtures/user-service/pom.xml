@@ -1,0 +1,10 @@
+<project><modelVersion>4.0.0</modelVersion>
+<groupId>pt.demo</groupId><artifactId>user-service</artifactId><version>${revision}</version>
+<properties><revision>2.1.0</revision></properties>
+<dependencies>
+<dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webflux</artifactId><version>3.3.5</version></dependency>
+<dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId><version>3.3.5</version></dependency>
+<dependency><groupId>io.springfox</groupId><artifactId>springfox-boot-starter</artifactId><version>3.0.0</version></dependency>
+</dependencies>
+<build><plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins></build>
+</project>

@@ -1,0 +1,398 @@
+export type ServiceKind = 'spring-boot' | 'keycloak-spi' | 'maven-lib'
+
+export interface DatasourceInfo {
+  url?: string
+  username?: string
+  driver?: string
+}
+
+export interface ServiceInfo {
+  id: string
+  name: string
+  artifactId: string
+  groupId?: string
+  version?: string
+  path: string
+  relativePath: string
+  kind: ServiceKind
+  port?: number
+  contextPath?: string
+  swaggerPath?: string
+  swaggerLib?: 'springdoc' | 'springfox'
+  /** Caminho do JSON OpenAPI (ex.: /v3/api-docs) */
+  apiDocsPath?: string
+  datasource?: DatasourceInfo
+  hasDatabase: boolean
+  usesKeycloak: boolean
+  /** Pasta onde existe mvnw/mvnw.cmd (o próprio projeto ou um ancestral) */
+  wrapperDir?: string
+  /** Perfis detetados via application-<perfil>.* */
+  profiles: string[]
+  /** Ficheiros META-INF/services (SPIs Keycloak) */
+  spiProviders: string[]
+  /** Jar mais recente em target/ (se existir) */
+  jarPath?: string
+  configFiles: string[]
+  /** Pasta src/main/resources de onde a configuração foi lida (num multi-módulo pode ser outro módulo) */
+  resourcesDir: string
+  /** Multi-módulo: pasta absoluta do módulo executável (boot) ou do SPI; igual a path num projeto simples */
+  moduleDir?: string
+  /** Multi-módulo: caminho relativo do módulo executável (para mvn -pl) */
+  runModule?: string
+  /** Multi-módulo: artifactIds de todos os módulos */
+  modules?: string[]
+  /** Grupos springdoc detetados na configuração (springdoc.group-configs) */
+  swaggerGroups?: string[]
+}
+
+export interface ScanResult {
+  root: string
+  services: ServiceInfo[]
+  keycloakHome?: string
+  scannedAt: number
+}
+
+export type ProcStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed'
+export type StartMode = 'run' | 'debug' | 'build' | 'clean-build' | 'clean-install'
+export const BUILD_MODES: ReadonlySet<StartMode> = new Set<StartMode>(['build', 'clean-build', 'clean-install'])
+
+export interface ProcState {
+  id: string
+  status: ProcStatus
+  pid?: number
+  mode?: StartMode
+  startedAt?: number
+  endedAt?: number
+  exitCode?: number | null
+  debugPort?: number
+  /** Porta lida do log ("Tomcat started on port 8081") */
+  detectedPort?: number
+}
+
+export interface LogLine {
+  ts: number
+  stream: 'stdout' | 'stderr' | 'system'
+  text: string
+}
+
+export interface ServiceSettings {
+  profile?: string
+  /** Porta HTTP com que o serviço arranca (sobrepõe server.port do application.yml) */
+  port?: number
+  /** Arrancar sempre em debug (JDWP) */
+  debug?: boolean
+  /** Última composição de perfis feita na app (para regenerar com as mesmas escolhas) */
+  envMix?: EnvMix
+  jvmArgs?: string
+  extraArgs?: string
+  debugPort?: number
+  swaggerPath?: string
+  env?: Record<string, string>
+}
+
+export interface KeycloakSettings {
+  home?: string
+  httpPort: number
+  adminUser: string
+  adminPassword: string
+  extraArgs?: string
+}
+
+export interface AppSettings {
+  rootFolder?: string
+  javaHome?: string
+  mavenCommand: string
+  preferWrapper: boolean
+  baseDebugPort: number
+  /** Comando do motor de containers: podman (omissão) ou docker */
+  containerCommand?: string
+  keycloak: KeycloakSettings
+  redis: RedisSettings
+  services: Record<string, ServiceSettings>
+}
+
+export interface KeycloakInfo {
+  home?: string
+  valid: boolean
+  version?: string
+  providers: string[]
+}
+
+export interface DeployResult {
+  jar: string
+  dest: string
+  keycloakRunning: boolean
+}
+
+export interface KcRealm {
+  id: string
+  realm: string
+  enabled: boolean
+  displayName?: string
+  /** Mostra o link "Register" na página de login */
+  registrationAllowed?: boolean
+}
+export type KcRealmPatch = Partial<Pick<KcRealm, 'enabled' | 'displayName' | 'registrationAllowed'>>
+export interface KcClient {
+  id: string
+  clientId: string
+  enabled: boolean
+  protocol?: string
+  publicClient?: boolean
+  rootUrl?: string
+}
+export interface KcUser {
+  id: string
+  username: string
+  email?: string
+  firstName?: string
+  lastName?: string
+  enabled: boolean
+}
+export interface KcNewUser {
+  username: string
+  email?: string
+  firstName?: string
+  lastName?: string
+  password?: string
+}
+export interface KcProviderInfo {
+  spi: string
+  providers: string[]
+}
+
+export interface DirListing {
+  /** Pasta listada ('' = lista de drives no Windows) */
+  path: string
+  /** undefined = sem pai (raiz); '' = voltar à lista de drives */
+  parent?: string
+  dirs: string[]
+  drives: string[]
+}
+
+/** Pedido HTTP feito pelo servidor em nome do browser (evita CORS nos serviços). */
+export interface HttpRequest {
+  method: string
+  url: string
+  headers?: Record<string, string>
+  body?: string
+}
+export interface HttpResponse {
+  status: number
+  statusText: string
+  headers: Record<string, string>
+  body: string
+  timeMs: number
+  /** Preenchido quando nem sequer houve resposta (ligação recusada, timeout) */
+  error?: string
+}
+
+export interface KcNewRealm {
+  realm: string
+  displayName?: string
+  /** De onde copiar a configuração: outro realm do servidor ou um ficheiro exportado */
+  source?: { kind: 'realm'; name: string } | { kind: 'file'; name: string }
+}
+export interface KcNewClient {
+  clientId: string
+  name?: string
+  publicClient: boolean
+  directAccessGrants: boolean
+  redirectUris: string[]
+  webOrigins: string[]
+}
+export interface KcExportResult {
+  file: string
+}
+
+/** Compositor de perfis: valores por chave escolhidos de ficheiros application-<ambiente>.* */
+export interface EnvMix {
+  /** Perfil de partida (normalmente "local") */
+  base: string
+  /** Perfil gerado → application-<target>.yml */
+  target: string
+  /** chave → ambiente de onde copiar o valor (chaves ausentes ficam com o valor do base) */
+  choices: Record<string, string>
+}
+export interface EnvKey {
+  key: string
+  path: string[]
+  /** valor (como texto) por ambiente; undefined = a chave não existe nesse ficheiro */
+  values: Record<string, string | undefined>
+}
+export interface EnvsInfo {
+  resourcesDir: string
+  profiles: string[]
+  files: Record<string, string>
+  /** perfis cujo ficheiro foi gerado pela app (não servem de origem) */
+  generated: string[]
+  keys: EnvKey[]
+  mix?: EnvMix
+}
+export interface EnvComposeResult {
+  file: string
+  content: string
+  warnings: string[]
+}
+
+/** Containers (Podman; o comando é configurável e o Docker também funciona) */
+export interface ContainerInfo {
+  id: string
+  name: string
+  image: string
+  /** running | exited | created | paused | … */
+  state: string
+  status: string
+  ports: string[]
+  created?: string
+  command?: string
+}
+export interface ImageInfo {
+  id: string
+  repoTags: string[]
+  size: string
+  created?: string
+  containers?: number
+}
+export interface MachineInfo {
+  name: string
+  running: boolean
+  starting: boolean
+  isDefault: boolean
+  lastUp?: string
+}
+export interface EngineInfo {
+  command: string
+  available: boolean
+  clientVersion?: string
+  serverVersion?: string
+  /** só Podman em Windows/macOS: a VM que corre os containers */
+  machines?: MachineInfo[]
+  error?: string
+}
+
+/** Git por serviço */
+export interface GitChange {
+  /** caminho relativo à pasta do serviço */
+  path: string
+  /** caminho relativo à raiz do repositório (para comandos) */
+  repoPath: string
+  origPath?: string
+  /** M A D R C ? U … */
+  code: string
+  staged: boolean
+  unstaged: boolean
+  untracked: boolean
+}
+export interface GitInfo {
+  isRepo: boolean
+  root?: string
+  /** pasta do serviço relativa à raiz do repo ('' = é a raiz) */
+  prefix?: string
+  branch?: string
+  detached?: boolean
+  upstream?: string
+  ahead?: number
+  behind?: number
+  lastCommit?: { hash: string; author: string; when: string; subject: string }
+  remote?: string
+  changes: GitChange[]
+  error?: string
+}
+export interface GitBranch {
+  name: string
+  current: boolean
+  remote: boolean
+  upstream?: string
+  when?: string
+  subject?: string
+}
+export interface GitCommit {
+  hash: string
+  author: string
+  when: string
+  subject: string
+  refs?: string
+}
+
+/** Resumo git por serviço (barra lateral) */
+export type GitSummary = Record<string, { branch?: string; changes: number; ahead?: number; behind?: number }>
+
+/** Redis */
+export interface RedisSettings {
+  host: string
+  port: number
+  password?: string
+  db: number
+  /** Container Podman/Docker gerido pela app (nome e imagem) */
+  containerName: string
+  image: string
+}
+export interface RedisInfo {
+  connected: boolean
+  error?: string
+  host: string
+  port: number
+  db: number
+  version?: string
+  uptimeSec?: number
+  usedMemory?: string
+  keys?: number
+  clients?: number
+  hits?: number
+  misses?: number
+  /** estado do container gerido pela app (se o motor de containers estiver disponível) */
+  container?: { exists: boolean; running: boolean; name: string }
+}
+export interface RedisKeyMeta {
+  key: string
+  type: string
+  ttl: number
+}
+export interface RedisScan {
+  cursor: string
+  keys: RedisKeyMeta[]
+}
+export interface RedisKeyValue extends RedisKeyMeta {
+  /** string → string; hash → objeto; list/set → string[]; zset → [{member, score}]; stream → entradas */
+  value: unknown
+  length?: number
+  memory?: number
+}
+
+/** Diagnóstico da máquina/app */
+export type DiagStatus = 'ok' | 'warn' | 'fail' | 'info'
+export interface DiagItem {
+  group: string
+  name: string
+  status: DiagStatus
+  detail: string
+  hint?: string
+}
+export interface DiagReport {
+  generatedAt: number
+  platform: string
+  items: DiagItem[]
+}
+
+/** Dependências Maven de um serviço */
+export interface MavenDep {
+  groupId: string
+  artifactId: string
+  version?: string
+  scope: string
+  /** versão vem do dependencyManagement/BOM do parent (não está no pom) */
+  managed: boolean
+  optional?: boolean
+}
+export interface DepsModule {
+  module: string
+  path: string
+  deps: MavenDep[]
+}
+export interface DepsInfo {
+  parent?: { artifactId: string; version?: string }
+  springBootVersion?: string
+  modules: DepsModule[]
+  total: number
+}
