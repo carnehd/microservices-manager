@@ -1,11 +1,10 @@
 import { spawn } from 'child_process'
-import { existsSync, statSync } from 'fs'
+import { existsSync } from 'fs'
 import { connect } from 'net'
 import { arch, platform, release, totalmem } from 'os'
 import { join } from 'path'
 import type { AppSettings, DiagItem, DiagReport, ProcState, ScanResult } from '../shared/types'
 import { engineInfo } from './containers'
-import { keycloakInfo } from './keycloak'
 import * as redisOps from './redis'
 import { dataDir } from './settings'
 
@@ -118,17 +117,10 @@ export async function runDiagnostics(ctx: { settings: AppSettings; scan: ScanRes
     }
   }
 
-  // ---- Keycloak ----
-  const kc = keycloakInfo(settings.keycloak.home)
-  if (settings.keycloak.mode === 'container') add('Keycloak', 'Modo', 'info', `container ${settings.keycloak.containerName} · ${settings.keycloak.image}`, 'Precisa do motor de containers (ver secção Containers)')
-  else if (!settings.keycloak.home) add('Keycloak', 'Pasta', 'warn', 'não definida', 'Definições → Keycloak (pasta com bin/kc.bat) ou muda para modo container')
-  else add('Keycloak', 'Pasta', kc.valid ? 'ok' : 'fail', kc.valid ? `${settings.keycloak.home} · ${kc.version ?? 'versão desconhecida'} · ${kc.providers.length} provider(s)` : `${settings.keycloak.home}: sem bin/kc.${isWin ? 'bat' : 'sh'}`)
+  // ---- Keycloak (container) ----
+  add('Keycloak', 'Container', 'info', `${settings.keycloak.containerName} · ${settings.keycloak.image}`, 'Gerido na página Keycloak (precisa do motor de containers)')
   const kcUsed = await portInUse(settings.keycloak.httpPort)
-  add('Keycloak', `Porta :${settings.keycloak.httpPort}`, running.has('keycloak') ? 'ok' : kcUsed ? 'warn' : 'info', running.has('keycloak') ? 'Keycloak a correr (arrancado pela app)' : kcUsed ? 'ocupada por outro processo (outro Keycloak?)' : 'livre — Keycloak parado')
-  if (settings.keycloak.mode !== 'container' && kc.valid && settings.keycloak.home) {
-    const data = join(settings.keycloak.home, 'data')
-    add('Keycloak', 'Dados (realms, utilizadores)', existsSync(data) ? 'info' : 'info', existsSync(data) ? `${data} (${statSync(data).isDirectory() ? 'H2 dev' : ''})` : 'ainda sem data/ — primeiro arranque cria o admin com as credenciais das Definições')
-  }
+  add('Keycloak', `Porta :${settings.keycloak.httpPort}`, running.has('keycloak') ? 'ok' : kcUsed ? 'warn' : 'info', running.has('keycloak') ? 'Keycloak a correr (container gerido pela app)' : kcUsed ? 'ocupada por outro processo (outro Keycloak?)' : 'livre — Keycloak parado')
 
   // ---- Containers / Redis ----
   const engine = await engineInfo(settings.containerCommand?.trim() || 'podman')

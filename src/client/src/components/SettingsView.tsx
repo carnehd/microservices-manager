@@ -35,7 +35,6 @@ export function SettingsView({
       containerCommand: form.containerCommand?.trim() || undefined,
       keycloak: {
         ...form.keycloak,
-        home: form.keycloak.home?.trim() || undefined,
         httpPort: Number(form.keycloak.httpPort) || 8080,
         extraArgs: form.keycloak.extraArgs?.trim() || undefined,
         containerName: form.keycloak.containerName?.trim() || 'msm-keycloak',
@@ -65,23 +64,13 @@ export function SettingsView({
       <div className="tab-body">
         <div className="config">
           <section>
-            <h3>Pastas</h3>
+            <h3>Pasta raiz</h3>
             <div className="form">
               <label>
                 Pasta raiz dos microserviços
                 <div className="row">
                   <input className="input mono grow" value={form.rootFolder ?? ''} onChange={(e) => set('rootFolder', e.target.value)} placeholder="C:\projetos\microservicos" />
                   <button className="btn" onClick={() => pick(form.rootFolder, (d) => set('rootFolder', d))}>Escolher…</button>
-                </div>
-              </label>
-              <label>
-                Pasta do Keycloak (contém bin/kc.bat) — modo standalone; em modo container serve só para reaproveitar a data/
-                <div className="row">
-                  <input className="input mono grow" value={form.keycloak.home ?? ''} onChange={(e) => setKc('home', e.target.value)} placeholder="C:\keycloak-26.0.0" />
-                  <button className="btn" onClick={() => pick(form.keycloak.home, (d) => setKc('home', d))}>Escolher…</button>
-                  {scan?.keycloakHome && scan.keycloakHome !== form.keycloak.home && (
-                    <button className="btn" title={scan.keycloakHome} onClick={() => setKc('home', scan.keycloakHome)}>Usar a detetada</button>
-                  )}
                 </div>
               </label>
             </div>
@@ -118,38 +107,27 @@ export function SettingsView({
           <section>
             <h3>Keycloak</h3>
             <div className="form">
+              <div className="form-row">
+                <label>Nome do container<input className="input mono" value={form.keycloak.containerName} onChange={(e) => setKc('containerName', e.target.value)} /></label>
+                <label>Imagem (a versão é a tag)<input className="input mono" style={{ minWidth: 300 }} value={form.keycloak.image} onChange={(e) => setKc('image', e.target.value)} /></label>
+              </div>
               <label>
-                Modo
-                <select className="input" value={form.keycloak.mode} onChange={(e) => setKc('mode', e.target.value as AppSettings['keycloak']['mode'])}>
-                  <option value="standalone">standalone — distribuição descompactada (bin/kc.bat)</option>
-                  <option value="container">container — imagem no Podman/Docker</option>
-                </select>
+                Pasta dos providers (montada em /opt/keycloak/providers)
+                <div className="row">
+                  <input className="input mono grow" value={form.keycloak.providersDir ?? ''} onChange={(e) => setKc('providersDir', e.target.value)} placeholder="vazio = <pasta raiz>/keycloak-container/providers" />
+                  <button className="btn" onClick={() => pick(form.keycloak.providersDir, (d) => setKc('providersDir', d))}>Escolher…</button>
+                </div>
               </label>
-              {form.keycloak.mode === 'container' && (
-                <>
-                  <div className="form-row">
-                    <label>Nome do container<input className="input mono" value={form.keycloak.containerName} onChange={(e) => setKc('containerName', e.target.value)} /></label>
-                    <label>Imagem<input className="input mono" style={{ minWidth: 300 }} value={form.keycloak.image} onChange={(e) => setKc('image', e.target.value)} /></label>
-                  </div>
-                  <label>
-                    Pasta dos providers (montada em /opt/keycloak/providers)
-                    <div className="row">
-                      <input className="input mono grow" value={form.keycloak.providersDir ?? ''} onChange={(e) => setKc('providersDir', e.target.value)} placeholder="vazio = <pasta raiz>/keycloak-container/providers" />
-                      <button className="btn" onClick={() => pick(form.keycloak.providersDir, (d) => setKc('providersDir', d))}>Escolher…</button>
-                    </div>
-                  </label>
-                  <label>
-                    Pasta dos dados H2 (montada em /opt/keycloak/data)
-                    <div className="row">
-                      <input className="input mono grow" value={form.keycloak.dataDir ?? ''} onChange={(e) => setKc('dataDir', e.target.value)} placeholder="vazio = data/ da distribuição standalone se existir (reaproveita realms), senão <pasta raiz>/keycloak-container/data" />
-                      <button className="btn" onClick={() => pick(form.keycloak.dataDir, (d) => setKc('dataDir', d))}>Escolher…</button>
-                    </div>
-                  </label>
-                  <p className="muted small">Mudanças de imagem, pastas ou porta só se aplicam com "Recriar container" na página Keycloak (os dados ficam no disco).</p>
-                </>
-              )}
               <label>
-                Porta HTTP (start-dev --http-port)
+                Pasta dos dados H2 (montada em /opt/keycloak/data)
+                <div className="row">
+                  <input className="input mono grow" value={form.keycloak.dataDir ?? ''} onChange={(e) => setKc('dataDir', e.target.value)} placeholder="vazio = <pasta raiz>/keycloak-container/data" />
+                  <button className="btn" onClick={() => pick(form.keycloak.dataDir, (d) => setKc('dataDir', d))}>Escolher…</button>
+                </div>
+              </label>
+              <p className="muted small">Mudanças de imagem, pastas ou porta só se aplicam com "Recriar container" na página Keycloak (os dados ficam no disco).</p>
+              <label>
+                Porta HTTP
                 <input className="input" type="number" value={form.keycloak.httpPort} onChange={(e) => setKc('httpPort', Number(e.target.value))} />
               </label>
               <div className="form-row">
@@ -162,7 +140,7 @@ export function SettingsView({
                   <input className="input" type="password" value={form.keycloak.adminPassword} onChange={(e) => setKc('adminPassword', e.target.value)} />
                 </label>
               </div>
-              <p className="muted small">Usadas para criar o admin no primeiro arranque (KC_BOOTSTRAP_ADMIN_* / KEYCLOAK_ADMIN*) e para a Admin REST API.</p>
+              <p className="muted small">Usadas para criar o admin no primeiro arranque do container (KC_BOOTSTRAP_ADMIN_*) e para a Admin REST API.</p>
               <label>
                 Argumentos extra do start-dev
                 <input className="input mono" value={form.keycloak.extraArgs ?? ''} onChange={(e) => setKc('extraArgs', e.target.value)} placeholder="--import-realm --log-level=DEBUG" />

@@ -102,7 +102,6 @@ export const api = {
   kcStart: () => req<ProcState>('POST', '/api/kc/start'),
   kcStop: () => req<void>('POST', '/api/kc/stop'),
   kcRecreate: () => req<ProcState>('POST', '/api/kc/recreate'),
-  kcBuild: () => req<ProcState>('POST', '/api/kc/build'),
   kcRestart: () => req<ProcState>('POST', '/api/kc/restart'),
   kcDeploySpi: (id: string) => req<DeployResult>('POST', `/api/kc/deploy/${enc(id)}`),
   kcRemoveProvider: (name: string) => req<void>('DELETE', `/api/kc/providers/${enc(name)}`),

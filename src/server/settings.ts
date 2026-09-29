@@ -7,7 +7,7 @@ const DEFAULTS: AppSettings = {
   mavenCommand: 'mvn',
   preferWrapper: true,
   baseDebugPort: 5005,
-  keycloak: { mode: 'standalone', httpPort: 8080, adminUser: 'admin', adminPassword: 'admin', containerName: 'msm-keycloak', image: 'quay.io/keycloak/keycloak:26.7.4' },
+  keycloak: { httpPort: 8080, adminUser: 'admin', adminPassword: 'admin', containerName: 'msm-keycloak', image: 'quay.io/keycloak/keycloak:26.7.4' },
   redis: { host: 'localhost', port: 6379, db: 0, containerName: 'msm-redis', image: 'docker.io/library/redis:7-alpine' },
   services: {}
 }
@@ -33,10 +33,14 @@ export function getSettings(): AppSettings {
   } catch {
     /* primeira execução: sem ficheiro */
   }
+  // chaves de versões antigas (modo standalone) já não existem
+  const kcLoaded = { ...(loaded.keycloak ?? {}) } as Record<string, unknown>
+  delete kcLoaded.mode
+  delete kcLoaded.home
   cache = {
     ...DEFAULTS,
     ...loaded,
-    keycloak: { ...DEFAULTS.keycloak, ...(loaded.keycloak ?? {}) },
+    keycloak: { ...DEFAULTS.keycloak, ...(kcLoaded as Partial<AppSettings['keycloak']>) },
     redis: { ...DEFAULTS.redis, ...(loaded.redis ?? {}) },
     services: loaded.services ?? {}
   }

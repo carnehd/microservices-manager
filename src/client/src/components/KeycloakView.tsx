@@ -10,14 +10,13 @@ type Tab = 'logs' | 'providers' | 'admin'
 const KC_ID = 'keycloak'
 
 export function KeycloakView({
-  settings, scan, states, logs, onSaveSettings, pickFolder, notify, fail
+  settings, scan, states, logs, onSaveSettings, notify, fail
 }: {
   settings: AppSettings
   scan: ScanResult | null
   states: Record<string, ProcState>
   logs: LogsApi
   onSaveSettings: (patch: Partial<AppSettings>) => Promise<AppSettings | null>
-  pickFolder: (initial?: string) => Promise<string | null>
   notify: (text: string, kind?: 'error' | 'info' | 'success') => void
   fail: (e: unknown) => void
 }) {
@@ -26,10 +25,9 @@ export function KeycloakView({
   const [busy, setBusy] = useState<string | null>(null)
   const state = states[KC_ID]
   const kc = settings.keycloak
-  const container = kc.mode === 'container'
-  // modo container: o estado é o do container (o processo "keycloak" da app é só o podman logs -f)
-  const active = container ? !!info?.container?.running || isActive(state) : isActive(state)
-  const running = container ? !!info?.container?.running : state?.status === 'running' && state.mode === 'run'
+  // o estado é o do container (o processo "keycloak" da app é só o podman logs -f)
+  const running = !!info?.container?.running
+  const active = running || isActive(state)
   const adminUrl = `http://localhost:${kc.httpPort}/admin/`
 
   const refreshInfo = useCallback(() => api.kcInfo().then(setInfo).catch(fail), [fail])
@@ -37,15 +35,14 @@ export function KeycloakView({
   useEffect(() => {
     void refreshInfo()
     void loadLogs(KC_ID)
-  }, [kc.home, kc.mode, kc.containerName, refreshInfo, loadLogs])
+  }, [kc.containerName, kc.image, refreshInfo, loadLogs])
   useEffect(() => {
     if (!active) void refreshInfo() // depois de build/deploy a lista de providers pode ter mudado
   }, [active, refreshInfo])
   useEffect(() => {
-    if (!container) return
     const t = setInterval(() => void refreshInfo(), 5000)
     return () => clearInterval(t)
-  }, [container, refreshInfo])
+  }, [refreshInfo])
 
   const run = async (label: string, fn: () => Promise<unknown>, after?: () => void): Promise<void> => {
     setBusy(label)
@@ -57,11 +54,6 @@ export function KeycloakView({
     } finally {
       setBusy(null)
     }
-  }
-
-  const pickHome = async (): Promise<void> => {
-    const dir = await pickFolder(kc.home)
-    if (dir) await onSaveSettings({ keycloak: { ...kc, home: dir } })
   }
 
   const spis = scan?.services.filter((s) => s.kind === 'keycloak-spi') ?? []
@@ -78,20 +70,11 @@ export function KeycloakView({
     <main className="service">
       <div className="svc-header">
         <div className="grow">
-          <h2>Keycloak {info?.version && <span className="muted small">{info.version}</span>}</h2>
+          <h2>Keycloak</h2>
           <div className="muted mono small">
-            {container ? (
-              <>
-                🐳 container <b>{kc.containerName}</b> · {kc.image}
-                {info?.container && <> · {info.container.running ? 'a correr' : info.container.exists ? `parado (${info.container.status ?? ''})` : 'ainda não criado'}</>}
-                {info?.engineError && <span className="text-error"> · {info.engineError}</span>}
-              </>
-            ) : kc.home ? (
-              <a className="link" onClick={() => api.openPath(kc.home!)}>{kc.home}</a>
-            ) : (
-              'pasta não definida'
-            )}
-            {info && !container && kc.home && !info.valid && <span className="text-error"> — bin/kc.bat não encontrado</span>}
+            🐳 container <b>{kc.containerName}</b> · {kc.image}
+            {info?.container && <> · {info.container.running ? 'a correr' : info.container.exists ? `parado (${info.container.status ?? ''})` : 'ainda não criado'}</>}
+            {info?.engineError && <span className="text-error"> · {info.engineError}</span>}
             {' '}· porta {kc.httpPort} · admin <b>{kc.adminUser}</b>
           </div>
         </div>
@@ -100,27 +83,18 @@ export function KeycloakView({
 
       <div className="actions">
         {!running && (
-          <button className="btn btn-primary" disabled={!info?.valid || !!busy} onClick={() => run('start', api.kcStart, () => void refreshInfo())} title={container ? `${kc.image} start-dev (a primeira vez faz pull da imagem)` : 'kc start-dev'}>
-            {busy === 'start' ? 'A arrancar…' : container ? '▶ Arrancar container' : '▶ Arrancar (start-dev)'}
+          <button className="btn btn-primary" disabled={!info?.valid || !!busy} onClick={() => run('start', api.kcStart, () => void refreshInfo())} title={`${kc.image} start-dev (a primeira vez faz pull da imagem)`}>
+            {busy === 'start' ? 'A arrancar…' : '▶ Arrancar'}
           </button>
         )}
         {running && <button className="btn btn-danger" disabled={!!busy || state?.status === 'stopping'} onClick={() => run('stop', api.kcStop, () => void refreshInfo())}>{busy === 'stop' ? 'A parar…' : '■ Parar'}</button>}
         <button className="btn" disabled={!info?.valid || !!busy || state?.status === 'stopping'} onClick={() => run('restart', api.kcRestart, () => void refreshInfo())}>⟳ Reiniciar</button>
-        {!container && <button className="btn" disabled={!info?.valid || active || !!busy} onClick={() => run('build', api.kcBuild)} title="kc.bat build — necessário depois de mudar providers em modo produção">Build</button>}
-        {container && (
-          <button className="btn" disabled={!info?.valid || !!busy} title="Apaga e cria de novo o container com a imagem/pastas/porta atuais das Definições (os dados ficam no disco)"
-            onClick={() => { if (confirm(`Recriar o container ${kc.containerName}? Os dados (H2) e providers ficam no disco.`)) void run('recreate', api.kcRecreate, () => void refreshInfo()) }}>Recriar container</button>
-        )}
+        <button className="btn" disabled={!info?.valid || !!busy} title="Apaga e cria de novo o container com a imagem/pastas/porta atuais das Definições (os dados ficam no disco)"
+          onClick={() => { if (confirm(`Recriar o container ${kc.containerName}? Os dados (H2) e providers ficam no disco.`)) void run('recreate', api.kcRecreate, () => void refreshInfo()) }}>Recriar container</button>
         <span className="grow" />
         <button className="btn" onClick={() => api.openExternal(adminUrl)} title={adminUrl}>Consola de administração</button>
-        {!container && <button className="btn" onClick={pickHome}>Escolher pasta…</button>}
-        {!container && scan?.keycloakHome && scan.keycloakHome !== kc.home && (
-          <button className="btn" onClick={() => onSaveSettings({ keycloak: { ...kc, home: scan.keycloakHome } })} title={scan.keycloakHome}>
-            Usar a detetada no scan
-          </button>
-        )}
       </div>
-      {container && info?.keycloakContainers && info.keycloakContainers.filter((c) => c.name !== kc.containerName).length > 0 && (
+      {info && info.keycloakContainers.filter((c) => c.name !== kc.containerName).length > 0 && (
         <div className="actions">
           <span className="muted small">Outros containers Keycloak encontrados:</span>
           {info.keycloakContainers.filter((c) => c.name !== kc.containerName).map((c) => (
@@ -146,7 +120,7 @@ export function KeycloakView({
         {tab === 'providers' && (
           <div className="config">
             <section>
-              <h3>Instalados em <span className="mono">{container ? info?.providersDir : 'providers/'}</span>{container && <span className="muted"> (montada em /opt/keycloak/providers)</span>}</h3>
+              <h3>Instalados em <span className="mono">{info?.providersDir}</span><span className="muted"> (montada em /opt/keycloak/providers)</span></h3>
               {!info?.providers.length && <p className="muted">Nenhum provider instalado.</p>}
               {info?.providers.map((p) => (
                 <div className="row" key={p}>

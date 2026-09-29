@@ -8,7 +8,6 @@ if (!root) {
   process.exit(1)
 }
 const r = await scanFolder(root)
-console.log(`Keycloak: ${r.keycloakHome ?? '(não encontrado)'}`)
 for (const s of r.services) {
   const flags = [s.swaggerLib && `swagger=${s.swaggerLib}${s.swaggerPath}`, s.hasDatabase && 'db', s.usesKeycloak && 'kc-client', s.wrapperDir && 'mvnw']
     .filter(Boolean)

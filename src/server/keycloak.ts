@@ -1,40 +1,4 @@
-import { existsSync, promises as fs, readdirSync, readFileSync } from 'fs'
-import { basename, dirname, join } from 'path'
-import type { KcClient, KcNewClient, KcNewUser, KcProviderInfo, KcRealm, KcRealmPatch, KcUser, KeycloakInfo } from '../shared/types'
-
-export function keycloakInfo(home?: string): KeycloakInfo {
-  if (!home) return { mode: 'standalone', valid: false, providers: [] }
-  const valid = existsSync(join(home, 'bin', 'kc.bat')) || existsSync(join(home, 'bin', 'kc.sh'))
-  let version: string | undefined
-  try {
-    version = readFileSync(join(home, 'version.txt'), 'utf8').trim()
-  } catch {
-    /* distribuições antigas não têm version.txt */
-  }
-  let providers: string[] = []
-  try {
-    providers = readdirSync(join(home, 'providers')).filter((f) => f.endsWith('.jar')).sort()
-  } catch {
-    /* sem pasta providers */
-  }
-  return { mode: 'standalone', home, valid, version, providers }
-}
-
-export function kcScript(home: string): string {
-  return join(home, 'bin', process.platform === 'win32' ? 'kc.bat' : 'kc.sh')
-}
-
-export async function copyProvider(home: string, jarPath: string): Promise<string> {
-  const dest = join(home, 'providers', basename(jarPath))
-  await fs.mkdir(dirname(dest), { recursive: true })
-  await fs.copyFile(jarPath, dest)
-  return dest
-}
-
-export async function removeProvider(home: string, name: string): Promise<void> {
-  if (name.includes('/') || name.includes('\\') || !name.endsWith('.jar')) throw new Error('Nome de provider inválido')
-  await fs.rm(join(home, 'providers', name))
-}
+import type { KcClient, KcNewClient, KcNewUser, KcProviderInfo, KcRealm, KcRealmPatch, KcUser } from '../shared/types'
 
 /** Cliente mínimo da Admin REST API (password grant no admin-cli do realm master). */
 export class KcAdmin {

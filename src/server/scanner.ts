@@ -42,10 +42,6 @@ function toInt(v?: string): number | undefined {
 
 const posix = (p: string): string => p.split(sep).join('/')
 
-export function isKeycloakHome(dir: string): boolean {
-  return existsSync(join(dir, 'bin', 'kc.bat')) || existsSync(join(dir, 'bin', 'kc.sh'))
-}
-
 /** Nó da árvore de projetos: folha (um pom com código) ou agregador (packaging pom) com filhos. */
 interface Node {
   dir: string
@@ -55,14 +51,8 @@ interface Node {
 }
 
 export async function scanFolder(root: string): Promise<ScanResult> {
-  let keycloakHome: string | undefined
-
   async function walk(dir: string, depth: number): Promise<Node[]> {
     if (depth > MAX_DEPTH) return []
-    if (isKeycloakHome(dir)) {
-      keycloakHome ??= dir
-      return []
-    }
     if (existsSync(join(dir, 'pom.xml'))) {
       const project = await analyzeProject(dir, root)
       if (project?.aggregator) return [{ dir, aggregator: project.aggregator, children: await walkChildren(dir, depth) }]
@@ -89,7 +79,7 @@ export async function scanFolder(root: string): Promise<ScanResult> {
   const services: ServiceInfo[] = []
   collect(await walk(root, 0), root, services)
   services.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
-  return { root, services, keycloakHome, scannedAt: Date.now() }
+  return { root, services, scannedAt: Date.now() }
 }
 
 function leavesOf(node: Node): ServiceInfo[] {

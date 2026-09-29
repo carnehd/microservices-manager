@@ -5,7 +5,7 @@ import { spawn } from 'child_process'
 import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-import type { KeycloakInfo, ProcState, ScanResult } from '../src/shared/types'
+import type { ProcState, ScanResult } from '../src/shared/types'
 
 const PORT = 3299
 const base = `http://127.0.0.1:${PORT}`
@@ -55,9 +55,6 @@ try {
   console.log('     serviços:', names.join(', '))
   check('scan encontrou demo-service, order-service, my-auth-spi', ['spring-boot:demo-service', 'spring-boot:order-service', 'keycloak-spi:my-auth-spi'].every((n) => names.includes(n)))
   check('order-service: porta 8081, /orders, springdoc /docs', (() => { const s = scan.services.find((x) => x.name === 'order-service'); return s?.port === 8081 && s.contextPath === '/orders' && s.swaggerPath === '/docs' && s.hasDatabase })())
-  check('keycloak detetado no scan', !!scan.keycloakHome)
-  const kc = await call<KeycloakInfo>('GET', '/api/kc/info')
-  check(`kc/info válido, providers=${kc.providers.join(',')}`, kc.valid && kc.providers.includes('old-spi.jar'))
 
   const demo = scan.services.find((s) => s.name === 'demo-service')!
   await call('POST', `/api/services/${demo.id}/start`, { mode: 'debug' })

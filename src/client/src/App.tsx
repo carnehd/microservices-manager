@@ -205,7 +205,7 @@ export default function App() {
           </>
         )}
         {view === 'keycloak' && (
-          <KeycloakView settings={settings} scan={scan} states={states} logs={logs} onSaveSettings={saveSettings} pickFolder={pickFolder} notify={notify} fail={fail} />
+          <KeycloakView settings={settings} scan={scan} states={states} logs={logs} onSaveSettings={saveSettings} notify={notify} fail={fail} />
         )}
         {view === 'containers' && <ContainersView logs={logs} states={states} notify={notify} fail={fail} />}
         {view === 'redis' && <RedisView notify={notify} fail={fail} />}
