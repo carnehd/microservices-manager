@@ -87,6 +87,8 @@ configuração/perfis são lidos do módulo que os tiver. Agregadores com vário
 De cada Spring Boot lê `application.properties/yml`: porta, context-path, datasource, perfis
 (`application-<perfil>.*`), Swagger (springdoc/springfox, incluindo grupos `springdoc.group-configs`),
 base de dados, uso de Keycloak (oauth2 resource server/client) e o Maven wrapper (na pasta ou num ancestral).
+Também deteta **ficheiros de contrato OpenAPI/Swagger** (contract-first) no projeto — qualquer `.yaml/.yml/.json`
+com `openapi:`/`swagger:` no topo (ex.: `src/main/resources/openapi/api.yaml`).
 
 Diagnóstico sem UI: `npm run scan -- C:\pasta\dos\microservicos`.
 
