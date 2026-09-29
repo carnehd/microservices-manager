@@ -126,6 +126,7 @@ export function EnvsView({
       </section>
 
       <section>
+        <div className="envs-scroll">
         <table className="grid envs-table">
           <thead>
             <tr>
@@ -160,6 +161,7 @@ export function EnvsView({
             {!rows.length && <tr><td colSpan={sources.length + 2} className="muted">Nenhuma variável difere entre ambientes.</td></tr>}
           </tbody>
         </table>
+        </div>
         <p className="muted small">Clica no valor de um ambiente para o usar, ou escreve um valor à mão na coluna <b>Valor a usar</b>. As restantes ficam como em <span className="mono">{base}</span>.</p>
       </section>
     </div>

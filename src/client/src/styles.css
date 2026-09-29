@@ -244,7 +244,10 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 }
 
 /* Compositor de perfis (separador Ambientes) */
-.envs-table td.val { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.envs-scroll { overflow-x: auto; }
+.envs-table { min-width: 100%; table-layout: auto; }
+.envs-table th, .envs-table td { white-space: nowrap; }
+.envs-table td.val { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .envs-table td.val.chosen { background: rgba(79, 140, 255, .18); outline: 1px solid rgba(79, 140, 255, .5); }
 .envs-table td.val.missing { color: var(--muted); cursor: default; }
 .envs-table select.input { padding: 3px 6px; }
@@ -292,6 +295,6 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 .chip-info { border-color: var(--border); color: var(--muted); }
 .chip-debug { border-color: rgba(107, 116, 128, .6); color: #8b95a3; }
 .chip-system { border-color: rgba(90, 176, 255, .4); color: var(--blue); }
-.envs-table .val-edit { min-width: 220px; }
-.envs-table .val-edit .input { width: 190px; }
+.envs-table .val-edit { width: 260px; white-space: nowrap; }
+.envs-table .val-edit .input { width: 220px; box-sizing: border-box; }
 .envs-table .val-edit .link { margin-left: 6px; }
