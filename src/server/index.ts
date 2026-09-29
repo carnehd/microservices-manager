@@ -63,10 +63,11 @@ async function stop(signal: string): Promise<void> {
   closing = true
   console.log(`\n${signal}: a parar os processos filhos…`)
   // Rede de segurança: sai mesmo que a paragem de um processo filho encrave
+  // (sem .unref(): tem de disparar mesmo que o event loop esteja "vazio")
   setTimeout(() => {
     console.error('A paragem demorou demasiado; a sair à força.')
     process.exit(1)
-  }, 10_000).unref()
+  }, 10_000)
   try {
     await shutdown()
   } catch (e) {

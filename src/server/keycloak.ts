@@ -3,7 +3,7 @@ import { basename, dirname, join } from 'path'
 import type { KcClient, KcNewClient, KcNewUser, KcProviderInfo, KcRealm, KcRealmPatch, KcUser, KeycloakInfo } from '../shared/types'
 
 export function keycloakInfo(home?: string): KeycloakInfo {
-  if (!home) return { valid: false, providers: [] }
+  if (!home) return { mode: 'standalone', valid: false, providers: [] }
   const valid = existsSync(join(home, 'bin', 'kc.bat')) || existsSync(join(home, 'bin', 'kc.sh'))
   let version: string | undefined
   try {
@@ -17,7 +17,7 @@ export function keycloakInfo(home?: string): KeycloakInfo {
   } catch {
     /* sem pasta providers */
   }
-  return { home, valid, version, providers }
+  return { mode: 'standalone', home, valid, version, providers }
 }
 
 export function kcScript(home: string): string {

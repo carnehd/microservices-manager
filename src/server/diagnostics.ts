@@ -120,11 +120,12 @@ export async function runDiagnostics(ctx: { settings: AppSettings; scan: ScanRes
 
   // ---- Keycloak ----
   const kc = keycloakInfo(settings.keycloak.home)
-  if (!settings.keycloak.home) add('Keycloak', 'Pasta', 'warn', 'não definida', 'Definições → Keycloak, ou põe a distribuição dentro da pasta raiz')
+  if (settings.keycloak.mode === 'container') add('Keycloak', 'Modo', 'info', `container ${settings.keycloak.containerName} · ${settings.keycloak.image}`, 'Precisa do motor de containers (ver secção Containers)')
+  else if (!settings.keycloak.home) add('Keycloak', 'Pasta', 'warn', 'não definida', 'Definições → Keycloak (pasta com bin/kc.bat) ou muda para modo container')
   else add('Keycloak', 'Pasta', kc.valid ? 'ok' : 'fail', kc.valid ? `${settings.keycloak.home} · ${kc.version ?? 'versão desconhecida'} · ${kc.providers.length} provider(s)` : `${settings.keycloak.home}: sem bin/kc.${isWin ? 'bat' : 'sh'}`)
   const kcUsed = await portInUse(settings.keycloak.httpPort)
   add('Keycloak', `Porta :${settings.keycloak.httpPort}`, running.has('keycloak') ? 'ok' : kcUsed ? 'warn' : 'info', running.has('keycloak') ? 'Keycloak a correr (arrancado pela app)' : kcUsed ? 'ocupada por outro processo (outro Keycloak?)' : 'livre — Keycloak parado')
-  if (kc.valid && settings.keycloak.home) {
+  if (settings.keycloak.mode !== 'container' && kc.valid && settings.keycloak.home) {
     const data = join(settings.keycloak.home, 'data')
     add('Keycloak', 'Dados (realms, utilizadores)', existsSync(data) ? 'info' : 'info', existsSync(data) ? `${data} (${statSync(data).isDirectory() ? 'H2 dev' : ''})` : 'ainda sem data/ — primeiro arranque cria o admin com as credenciais das Definições')
   }

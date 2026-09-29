@@ -159,16 +159,37 @@ export async function machineAction(cmd: string, action: 'start' | 'stop', name:
 }
 
 /** Garante um container com este nome a correr: arranca-o se existir parado, cria-o (run -d) se não existir. */
-export async function ensureContainer(cmd: string, opts: { name: string; image: string; ports: string[]; args?: string[] }): Promise<string> {
+export interface RunOptions {
+  name: string
+  image: string
+  ports: string[]
+  /** "pasta-do-disco:/caminho/no/container" ou "volume:/caminho" */
+  volumes?: string[]
+  env?: Record<string, string>
+  /** argumentos extra do run (ex.: --userns=keep-id) */
+  runArgs?: string[]
+  /** comando/args passados à imagem */
+  args?: string[]
+  /** apaga o container existente antes de criar (para aplicar nova configuração) */
+  recreate?: boolean
+}
+
+export async function ensureContainer(cmd: string, opts: RunOptions): Promise<string> {
   if (!/^[\w.-]+$/.test(opts.name)) throw new Error('Nome de container inválido')
   const existing = (await listContainers(cmd)).find((c) => c.name === opts.name)
-  if (existing?.state === 'running') return `${opts.name} já está a correr`
-  if (existing) {
+  if (existing && opts.recreate) await run(cmd, ['rm', '-f', opts.name], 60_000)
+  else if (existing?.state === 'running') return `${opts.name} já está a correr`
+  else if (existing) {
     await run(cmd, ['start', opts.name], 60_000)
     return `${opts.name} iniciado`
   }
-  const portArgs = opts.ports.flatMap((p) => ['-p', p])
-  const id = (await run(cmd, ['run', '-d', '--name', opts.name, ...portArgs, opts.image, ...(opts.args ?? [])], 600_000)).trim()
+  const args = ['run', '-d', '--name', opts.name, ...(opts.runArgs ?? [])]
+  for (const p of opts.ports) args.push('-p', p)
+  for (const v of opts.volumes ?? []) args.push('-v', v)
+  for (const [k, v] of Object.entries(opts.env ?? {})) args.push('-e', `${k}=${v}`)
+  args.push(opts.image, ...(opts.args ?? []))
+  // A primeira vez faz pull da imagem (pode demorar minutos)
+  const id = (await run(cmd, args, 900_000)).trim()
   return `${opts.name} criado a partir de ${opts.image} (${id.slice(0, 12)})`
 }
 

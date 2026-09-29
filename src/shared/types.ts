@@ -90,12 +90,22 @@ export interface ServiceSettings {
   env?: Record<string, string>
 }
 
+export type KeycloakMode = 'standalone' | 'container'
 export interface KeycloakSettings {
+  /** standalone = kc.bat/kc.sh da pasta `home`; container = imagem no Podman/Docker */
+  mode: KeycloakMode
   home?: string
   httpPort: number
   adminUser: string
   adminPassword: string
   extraArgs?: string
+  /** Modo container */
+  containerName: string
+  image: string
+  /** Pasta do disco montada em /opt/keycloak/providers (jars dos SPIs); vazio = <raiz>/keycloak-container/providers */
+  providersDir?: string
+  /** Pasta do disco montada em /opt/keycloak/data (H2); vazio = <home>/data se existir, senão <raiz>/keycloak-container/data */
+  dataDir?: string
 }
 
 export interface AppSettings {
@@ -112,10 +122,19 @@ export interface AppSettings {
 }
 
 export interface KeycloakInfo {
+  mode: KeycloakMode
   home?: string
   valid: boolean
   version?: string
   providers: string[]
+  /** Modo container: pastas efetivas e estado do container gerido */
+  providersDir?: string
+  dataDir?: string
+  container?: { name: string; image: string; exists: boolean; running: boolean; status?: string }
+  /** Todos os containers cujo nome/imagem contém "keycloak" (mesmo não geridos pela app) */
+  keycloakContainers?: Array<{ name: string; image: string; state: string; status: string; ports: string[] }>
+  /** Motor de containers indisponível (mensagem) */
+  engineError?: string
 }
 
 export interface DeployResult {

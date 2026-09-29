@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
-import { promises as fs } from 'fs'
-import { delimiter, join } from 'path'
-import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type KcExportResult, type KcNewRealm, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type StartMode } from '../shared/types'
+import { existsSync, promises as fs } from 'fs'
+import { basename, delimiter, join } from 'path'
+import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type StartMode } from '../shared/types'
 import { addSseClient, broadcast } from './events'
 import { listDirs, openPath, openTerminal } from './fsapi'
 import { containerAction, containerState, engineInfo, ensureContainer, listContainers, listImages, machineAction, removeImage, type ContainerAction } from './containers'
@@ -10,10 +10,10 @@ import { depsCommandArgs, listDeps } from './deps'
 import { runDiagnostics } from './diagnostics'
 import { composeEnv, listEnvs } from './envs'
 import * as gitOps from './git'
-import { KcAdmin, copyProvider, kcScript, keycloakInfo, prepareRealmImport, removeProvider } from './keycloak'
+import { KcAdmin, kcScript, keycloakInfo, prepareRealmImport, removeProvider } from './keycloak'
 import { ProcessManager } from './processManager'
 import { findJar, scanFolder } from './scanner'
-import { getSettings, saveSettings } from './settings'
+import { dataDir, getSettings, saveSettings } from './settings'
 
 const pm = new ProcessManager()
 const isWin = process.platform === 'win32'
@@ -111,6 +111,8 @@ async function rescanQuiet(): Promise<void> {
   }
 }
 
+const containerCmd = (): string => getSettings().containerCommand?.trim() || 'podman'
+
 function kcHome(): string {
   const home = getSettings().keycloak.home
   if (!home) throw new Error('Pasta do Keycloak não definida (Definições → Keycloak)')
@@ -118,10 +120,84 @@ function kcHome(): string {
   return home
 }
 
-function startKeycloak(): ProcState {
+/** Pastas do disco usadas em modo container (providers e dados H2). */
+function kcDirs(): { providersDir: string; dataDir: string } {
+  const s = getSettings()
+  const base = s.rootFolder ? join(s.rootFolder, 'keycloak-container') : join(dataDir(), 'keycloak-container')
+  const homeData = s.keycloak.home ? join(s.keycloak.home, 'data') : undefined
+  return {
+    providersDir: s.keycloak.providersDir?.trim() || join(base, 'providers'),
+    // reutiliza a H2 do standalone (mesma versão) para não perder realms/utilizadores ao mudar de modo
+    dataDir: s.keycloak.dataDir?.trim() || (homeData && existsSync(homeData) ? homeData : join(base, 'data'))
+  }
+}
+
+const kcContainers = async (): Promise<Awaited<ReturnType<typeof listContainers>>> =>
+  (await listContainers(containerCmd())).filter((c) => /keycloak/i.test(c.image) || /keycloak/i.test(c.name))
+
+async function kcInfoFull(): Promise<KeycloakInfo> {
+  const kc = getSettings().keycloak
+  if (kc.mode !== 'container') return keycloakInfo(kc.home)
+  const { providersDir, dataDir: dDir } = kcDirs()
+  let providers: string[] = []
+  try {
+    providers = (await fs.readdir(providersDir)).filter((f) => f.endsWith('.jar')).sort()
+  } catch {
+    /* pasta ainda não existe */
+  }
+  const info: KeycloakInfo = {
+    mode: 'container', home: kc.home, valid: true, version: kc.image, providers, providersDir, dataDir: dDir,
+    container: { name: kc.containerName, image: kc.image, exists: false, running: false }
+  }
+  try {
+    const all = await kcContainers()
+    const mine = all.find((c) => c.name === kc.containerName)
+    if (mine) info.container = { name: mine.name, image: mine.image, exists: true, running: mine.state === 'running', status: mine.status }
+    info.keycloakContainers = all.map((c) => ({ name: c.name, image: c.image, state: c.state, status: c.status, ports: c.ports }))
+  } catch (e) {
+    info.valid = false
+    info.engineError = e instanceof Error ? e.message : String(e)
+  }
+  return info
+}
+
+/** Em modo container o processo "keycloak" da app é o `podman logs -f` (para os logs e o estado seguirem o container). */
+function followKeycloakLogs(): ProcState {
+  if (pm.isActive(KC_ID)) return pm.getState(KC_ID)
+  const kc = getSettings().keycloak
+  return pm.start({ id: KC_ID, commandLine: `${containerCmd()} logs -f --tail 300 ${kc.containerName}`, cwd: process.cwd(), mode: 'run' })
+}
+
+async function startKeycloak(recreate = false): Promise<ProcState> {
   const settings = getSettings()
-  const home = kcHome()
   const kc = settings.keycloak
+  if (kc.mode === 'container') {
+    // o standalone (se estiver a correr) ocupa a porta e a H2
+    if (pm.isActive(KC_ID) && pm.getState(KC_ID).mode !== 'run') await stopKeycloak()
+    const { providersDir, dataDir: dDir } = kcDirs()
+    await fs.mkdir(providersDir, { recursive: true })
+    await fs.mkdir(dDir, { recursive: true })
+    const msg = await ensureContainer(containerCmd(), {
+      name: kc.containerName,
+      image: kc.image,
+      ports: [`${kc.httpPort}:${kc.httpPort}`],
+      volumes: [`${providersDir}:/opt/keycloak/providers`, `${dDir}:/opt/keycloak/data`],
+      env: {
+        KC_HTTP_PORT: String(kc.httpPort),
+        KEYCLOAK_ADMIN: kc.adminUser, KEYCLOAK_ADMIN_PASSWORD: kc.adminPassword,
+        KC_BOOTSTRAP_ADMIN_USERNAME: kc.adminUser, KC_BOOTSTRAP_ADMIN_PASSWORD: kc.adminPassword
+      },
+      // keep-id: o utilizador keycloak (uid 1000) dentro do container é o teu utilizador no disco → escreve na H2 montada
+      runArgs: ['--userns=keep-id:uid=1000,gid=1000'],
+      args: ['start-dev', ...(kc.extraArgs?.trim() ? kc.extraArgs.trim().split(/\s+/) : [])],
+      recreate
+    })
+    pm.clearLogs(KC_ID)
+    const st = followKeycloakLogs()
+    pm.log(KC_ID, 'system', `🐳 ${msg} · providers ${providersDir} · data ${dDir}`)
+    return st
+  }
+  const home = kcHome()
   const args = ['start-dev', `--http-port=${kc.httpPort}`]
   if (kc.extraArgs?.trim()) args.push(kc.extraArgs.trim())
   // KEYCLOAK_ADMIN* (≤ 25) e KC_BOOTSTRAP_ADMIN_* (≥ 26): define ambos para cobrir todas as versões
@@ -134,33 +210,57 @@ function startKeycloak(): ProcState {
   return pm.start({ id: KC_ID, commandLine: [quote(kcScript(home)), ...args].join(' '), cwd: home, env, mode: 'run' })
 }
 
+async function stopKeycloak(): Promise<void> {
+  const kc = getSettings().keycloak
+  if (kc.mode === 'container') {
+    const c = (await kcContainers()).find((x) => x.name === kc.containerName)
+    if (c?.state === 'running') {
+      pm.log(KC_ID, 'system', `⏹ ${containerCmd()} stop ${kc.containerName}`)
+      await containerAction(containerCmd(), 'stop', kc.containerName)
+    }
+  }
+  if (pm.isActive(KC_ID)) {
+    await pm.stop(KC_ID)
+    await pm.waitForExit(KC_ID)
+  }
+}
+
 function buildKeycloak(): ProcState {
   const settings = getSettings()
+  if (settings.keycloak.mode === 'container') throw new Error('Em modo container não há "kc build": o start-dev já otimiza os providers ao arrancar')
   const home = kcHome()
   return pm.start({ id: KC_ID, commandLine: `${quote(kcScript(home))} build`, cwd: home, env: buildEnv(settings), mode: 'build' })
 }
 
 async function restartKeycloak(): Promise<ProcState> {
-  if (pm.isActive(KC_ID)) {
-    await pm.stop(KC_ID)
-    await pm.waitForExit(KC_ID)
-  }
+  await stopKeycloak()
   return startKeycloak()
 }
 
 async function deploySpi(id: string): Promise<DeployResult> {
   const svc = findService(id)
-  const home = kcHome()
+  const kc = getSettings().keycloak
+  const providersDir = kc.mode === 'container' ? kcDirs().providersDir : join(kcHome(), 'providers')
   startService(id, 'build')
   const code = await pm.waitForExit(id)
   if (code !== 0) throw new Error(`Build de ${svc.name} falhou (exit ${code}) — vê os logs do serviço`)
   const jar = findJar(svc.moduleDir ?? svc.path)
   if (!jar) throw new Error(`Não encontrei nenhum .jar em ${join(svc.moduleDir ?? svc.path, 'target')}`)
-  const dest = await copyProvider(home, jar)
+  await fs.mkdir(providersDir, { recursive: true })
+  const dest = join(providersDir, basename(jar))
+  await fs.copyFile(jar, dest)
   pm.log(KC_ID, 'system', `📦 provider instalado: ${dest}`)
   pm.log(id, 'system', `📦 copiado para ${dest}`)
   await rescanQuiet()
-  return { jar, dest, keycloakRunning: pm.isActive(KC_ID) }
+  const info = await kcInfoFull()
+  return { jar, dest, keycloakRunning: info.mode === 'container' ? !!info.container?.running : pm.isActive(KC_ID) }
+}
+
+async function removeProviderAny(name: string): Promise<void> {
+  const kc = getSettings().keycloak
+  if (kc.mode !== 'container') return removeProvider(kcHome(), name)
+  if (name.includes('/') || name.includes('\\') || !name.endsWith('.jar')) throw new Error('Nome de provider inválido')
+  await fs.rm(join(kcDirs().providersDir, name))
 }
 
 let adminCache: { key: string; client: KcAdmin } | null = null
@@ -276,12 +376,17 @@ apiRouter.post('/services/:id/envs/compose', h(async (req) => {
   return result
 }))
 
-apiRouter.get('/kc/info', h(() => keycloakInfo(getSettings().keycloak.home)))
+apiRouter.get('/kc/info', h(() => kcInfoFull()))
 apiRouter.post('/kc/start', h(() => startKeycloak()))
+apiRouter.post('/kc/stop', h(() => stopKeycloak()))
 apiRouter.post('/kc/build', h(() => buildKeycloak()))
 apiRouter.post('/kc/restart', h(() => restartKeycloak()))
+apiRouter.post('/kc/recreate', h(async () => {
+  await stopKeycloak()
+  return startKeycloak(true)
+}))
 apiRouter.post('/kc/deploy/:id', h((req) => deploySpi(param(req, 'id'))))
-apiRouter.delete('/kc/providers/:name', h((req) => removeProvider(kcHome(), param(req, 'name'))))
+apiRouter.delete('/kc/providers/:name', h((req) => removeProviderAny(param(req, 'name'))))
 apiRouter.post('/kc/admin', h((req) => {
   const a = admin()
   const op = str(req.body?.op)
@@ -342,7 +447,6 @@ apiRouter.post('/services/:id/git/pull', h((req) => gitOps.pull(findService(para
 apiRouter.post('/services/:id/git/push', h((req) => gitOps.push(findService(param(req, 'id')))))
 
 // ---- Containers (Podman/Docker) ----
-const containerCmd = (): string => getSettings().containerCommand?.trim() || 'podman'
 const CONTAINER_ACTIONS = new Set<ContainerAction>(['start', 'stop', 'restart', 'remove', 'pause', 'unpause'])
 
 apiRouter.get('/containers/engine', h(() => engineInfo(containerCmd())))

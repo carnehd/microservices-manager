@@ -37,7 +37,11 @@ export function SettingsView({
         ...form.keycloak,
         home: form.keycloak.home?.trim() || undefined,
         httpPort: Number(form.keycloak.httpPort) || 8080,
-        extraArgs: form.keycloak.extraArgs?.trim() || undefined
+        extraArgs: form.keycloak.extraArgs?.trim() || undefined,
+        containerName: form.keycloak.containerName?.trim() || 'msm-keycloak',
+        image: form.keycloak.image?.trim() || 'quay.io/keycloak/keycloak:26.7.4',
+        providersDir: form.keycloak.providersDir?.trim() || undefined,
+        dataDir: form.keycloak.dataDir?.trim() || undefined
       },
       redis: {
         ...form.redis,
@@ -71,7 +75,7 @@ export function SettingsView({
                 </div>
               </label>
               <label>
-                Pasta do Keycloak (contém bin/kc.bat)
+                Pasta do Keycloak (contém bin/kc.bat) — modo standalone; em modo container serve só para reaproveitar a data/
                 <div className="row">
                   <input className="input mono grow" value={form.keycloak.home ?? ''} onChange={(e) => setKc('home', e.target.value)} placeholder="C:\keycloak-26.0.0" />
                   <button className="btn" onClick={() => pick(form.keycloak.home, (d) => setKc('home', d))}>Escolher…</button>
@@ -114,6 +118,36 @@ export function SettingsView({
           <section>
             <h3>Keycloak</h3>
             <div className="form">
+              <label>
+                Modo
+                <select className="input" value={form.keycloak.mode} onChange={(e) => setKc('mode', e.target.value as AppSettings['keycloak']['mode'])}>
+                  <option value="standalone">standalone — distribuição descompactada (bin/kc.bat)</option>
+                  <option value="container">container — imagem no Podman/Docker</option>
+                </select>
+              </label>
+              {form.keycloak.mode === 'container' && (
+                <>
+                  <div className="form-row">
+                    <label>Nome do container<input className="input mono" value={form.keycloak.containerName} onChange={(e) => setKc('containerName', e.target.value)} /></label>
+                    <label>Imagem<input className="input mono" style={{ minWidth: 300 }} value={form.keycloak.image} onChange={(e) => setKc('image', e.target.value)} /></label>
+                  </div>
+                  <label>
+                    Pasta dos providers (montada em /opt/keycloak/providers)
+                    <div className="row">
+                      <input className="input mono grow" value={form.keycloak.providersDir ?? ''} onChange={(e) => setKc('providersDir', e.target.value)} placeholder="vazio = <pasta raiz>/keycloak-container/providers" />
+                      <button className="btn" onClick={() => pick(form.keycloak.providersDir, (d) => setKc('providersDir', d))}>Escolher…</button>
+                    </div>
+                  </label>
+                  <label>
+                    Pasta dos dados H2 (montada em /opt/keycloak/data)
+                    <div className="row">
+                      <input className="input mono grow" value={form.keycloak.dataDir ?? ''} onChange={(e) => setKc('dataDir', e.target.value)} placeholder="vazio = data/ da distribuição standalone se existir (reaproveita realms), senão <pasta raiz>/keycloak-container/data" />
+                      <button className="btn" onClick={() => pick(form.keycloak.dataDir, (d) => setKc('dataDir', d))}>Escolher…</button>
+                    </div>
+                  </label>
+                  <p className="muted small">Mudanças de imagem, pastas ou porta só se aplicam com "Recriar container" na página Keycloak (os dados ficam no disco).</p>
+                </>
+              )}
               <label>
                 Porta HTTP (start-dev --http-port)
                 <input className="input" type="number" value={form.keycloak.httpPort} onChange={(e) => setKc('httpPort', Number(e.target.value))} />

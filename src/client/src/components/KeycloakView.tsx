@@ -25,9 +25,11 @@ export function KeycloakView({
   const [info, setInfo] = useState<KeycloakInfo | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const state = states[KC_ID]
-  const active = isActive(state)
-  const running = state?.status === 'running' && state.mode === 'run'
   const kc = settings.keycloak
+  const container = kc.mode === 'container'
+  // modo container: o estado é o do container (o processo "keycloak" da app é só o podman logs -f)
+  const active = container ? !!info?.container?.running || isActive(state) : isActive(state)
+  const running = container ? !!info?.container?.running : state?.status === 'running' && state.mode === 'run'
   const adminUrl = `http://localhost:${kc.httpPort}/admin/`
 
   const refreshInfo = useCallback(() => api.kcInfo().then(setInfo).catch(fail), [fail])
@@ -35,10 +37,15 @@ export function KeycloakView({
   useEffect(() => {
     void refreshInfo()
     void loadLogs(KC_ID)
-  }, [kc.home, refreshInfo, loadLogs])
+  }, [kc.home, kc.mode, kc.containerName, refreshInfo, loadLogs])
   useEffect(() => {
     if (!active) void refreshInfo() // depois de build/deploy a lista de providers pode ter mudado
   }, [active, refreshInfo])
+  useEffect(() => {
+    if (!container) return
+    const t = setInterval(() => void refreshInfo(), 5000)
+    return () => clearInterval(t)
+  }, [container, refreshInfo])
 
   const run = async (label: string, fn: () => Promise<unknown>, after?: () => void): Promise<void> => {
     setBusy(label)
@@ -59,18 +66,32 @@ export function KeycloakView({
 
   const spis = scan?.services.filter((s) => s.kind === 'keycloak-spi') ?? []
 
+  const installAll = (): Promise<void> => run('deploy-all', async () => {
+    for (const s of spis) await api.kcDeploySpi(s.id)
+    await api.kcRestart()
+  }, () => {
+    void refreshInfo()
+    notify(`${spis.length} SPI(s) instalados; Keycloak a reiniciar`, 'success')
+  })
+
   return (
     <main className="service">
       <div className="svc-header">
         <div className="grow">
           <h2>Keycloak {info?.version && <span className="muted small">{info.version}</span>}</h2>
           <div className="muted mono small">
-            {kc.home ? (
+            {container ? (
+              <>
+                🐳 container <b>{kc.containerName}</b> · {kc.image}
+                {info?.container && <> · {info.container.running ? 'a correr' : info.container.exists ? `parado (${info.container.status ?? ''})` : 'ainda não criado'}</>}
+                {info?.engineError && <span className="text-error"> · {info.engineError}</span>}
+              </>
+            ) : kc.home ? (
               <a className="link" onClick={() => api.openPath(kc.home!)}>{kc.home}</a>
             ) : (
               'pasta não definida'
             )}
-            {info && kc.home && !info.valid && <span className="text-error"> — bin/kc.bat não encontrado</span>}
+            {info && !container && kc.home && !info.valid && <span className="text-error"> — bin/kc.bat não encontrado</span>}
             {' '}· porta {kc.httpPort} · admin <b>{kc.adminUser}</b>
           </div>
         </div>
@@ -78,19 +99,38 @@ export function KeycloakView({
       </div>
 
       <div className="actions">
-        {!active && <button className="btn btn-primary" disabled={!info?.valid || !!busy} onClick={() => run('start', api.kcStart)}>▶ Arrancar (start-dev)</button>}
-        {active && <button className="btn btn-danger" disabled={state?.status === 'stopping'} onClick={() => run('stop', () => api.stop(KC_ID))}>■ Parar</button>}
-        <button className="btn" disabled={!info?.valid || !!busy || state?.status === 'stopping'} onClick={() => run('restart', api.kcRestart)}>⟳ Reiniciar</button>
-        <button className="btn" disabled={!info?.valid || active || !!busy} onClick={() => run('build', api.kcBuild)} title="kc.bat build — necessário depois de mudar providers em modo produção">Build</button>
+        {!running && (
+          <button className="btn btn-primary" disabled={!info?.valid || !!busy} onClick={() => run('start', api.kcStart, () => void refreshInfo())} title={container ? `${kc.image} start-dev (a primeira vez faz pull da imagem)` : 'kc start-dev'}>
+            {busy === 'start' ? 'A arrancar…' : container ? '▶ Arrancar container' : '▶ Arrancar (start-dev)'}
+          </button>
+        )}
+        {running && <button className="btn btn-danger" disabled={!!busy || state?.status === 'stopping'} onClick={() => run('stop', api.kcStop, () => void refreshInfo())}>{busy === 'stop' ? 'A parar…' : '■ Parar'}</button>}
+        <button className="btn" disabled={!info?.valid || !!busy || state?.status === 'stopping'} onClick={() => run('restart', api.kcRestart, () => void refreshInfo())}>⟳ Reiniciar</button>
+        {!container && <button className="btn" disabled={!info?.valid || active || !!busy} onClick={() => run('build', api.kcBuild)} title="kc.bat build — necessário depois de mudar providers em modo produção">Build</button>}
+        {container && (
+          <button className="btn" disabled={!info?.valid || !!busy} title="Apaga e cria de novo o container com a imagem/pastas/porta atuais das Definições (os dados ficam no disco)"
+            onClick={() => { if (confirm(`Recriar o container ${kc.containerName}? Os dados (H2) e providers ficam no disco.`)) void run('recreate', api.kcRecreate, () => void refreshInfo()) }}>Recriar container</button>
+        )}
         <span className="grow" />
         <button className="btn" onClick={() => api.openExternal(adminUrl)} title={adminUrl}>Consola de administração</button>
-        <button className="btn" onClick={pickHome}>Escolher pasta…</button>
-        {scan?.keycloakHome && scan.keycloakHome !== kc.home && (
+        {!container && <button className="btn" onClick={pickHome}>Escolher pasta…</button>}
+        {!container && scan?.keycloakHome && scan.keycloakHome !== kc.home && (
           <button className="btn" onClick={() => onSaveSettings({ keycloak: { ...kc, home: scan.keycloakHome } })} title={scan.keycloakHome}>
             Usar a detetada no scan
           </button>
         )}
       </div>
+      {container && info?.keycloakContainers && info.keycloakContainers.filter((c) => c.name !== kc.containerName).length > 0 && (
+        <div className="actions">
+          <span className="muted small">Outros containers Keycloak encontrados:</span>
+          {info.keycloakContainers.filter((c) => c.name !== kc.containerName).map((c) => (
+            <span key={c.name} className="row" style={{ gap: 6 }}>
+              <span className="mono small">{c.name} <span className="muted">({c.image}, {c.state})</span></span>
+              <button className="btn btn-sm" disabled={!!busy} onClick={() => onSaveSettings({ keycloak: { ...kc, containerName: c.name } })} title="Passar a gerir este container (os providers/dados são os dele)">Usar este</button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="tabs">
         <button className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>Logs</button>
@@ -106,7 +146,7 @@ export function KeycloakView({
         {tab === 'providers' && (
           <div className="config">
             <section>
-              <h3>Instalados em <span className="mono">providers/</span></h3>
+              <h3>Instalados em <span className="mono">{container ? info?.providersDir : 'providers/'}</span>{container && <span className="muted"> (montada em /opt/keycloak/providers)</span>}</h3>
               {!info?.providers.length && <p className="muted">Nenhum provider instalado.</p>}
               {info?.providers.map((p) => (
                 <div className="row" key={p}>
@@ -125,7 +165,10 @@ export function KeycloakView({
               {active && <p className="muted small">Alterações em providers/ só são carregadas depois de reiniciar o Keycloak.</p>}
             </section>
             <section>
-              <h3>Projetos SPI encontrados no scan</h3>
+              <div className="row">
+                <h3 className="grow">Projetos SPI encontrados no scan</h3>
+                {spis.length > 1 && <button className="btn btn-sm btn-primary" disabled={!info?.valid || !!busy} onClick={installAll} title="Build + copiar cada jar para providers, e reiniciar o Keycloak no fim">{busy === 'deploy-all' ? 'A instalar…' : `⇪ Instalar todos (${spis.length}) e reiniciar`}</button>}
+              </div>
               {!spis.length && <p className="muted">Nenhum projeto com dependências org.keycloak encontrado.</p>}
               {spis.map((s) => (
                 <div className="row" key={s.id}>

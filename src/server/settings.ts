@@ -7,7 +7,7 @@ const DEFAULTS: AppSettings = {
   mavenCommand: 'mvn',
   preferWrapper: true,
   baseDebugPort: 5005,
-  keycloak: { httpPort: 8080, adminUser: 'admin', adminPassword: 'admin' },
+  keycloak: { mode: 'standalone', httpPort: 8080, adminUser: 'admin', adminPassword: 'admin', containerName: 'msm-keycloak', image: 'quay.io/keycloak/keycloak:26.7.4' },
   redis: { host: 'localhost', port: 6379, db: 0, containerName: 'msm-redis', image: 'docker.io/library/redis:7-alpine' },
   services: {}
 }

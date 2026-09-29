@@ -119,9 +119,18 @@ Separadores:
 
 ### Keycloak
 
-- Arrancar (`kc.bat start-dev --http-port=…` com admin bootstrap), parar, reiniciar, `kc.bat build`, logs.
-- **Providers / SPIs**: lista de `providers/`, remover; para cada projeto SPI detetado, **Build & instalar**
-  (`mvn package` + copiar o jar) — depois basta reiniciar.
+Dois modos (Definições → Keycloak → Modo):
+
+- **standalone** — distribuição descompactada: `kc.bat start-dev --http-port=…` com admin bootstrap, parar,
+  reiniciar, `kc.bat build`, logs.
+- **container** — imagem oficial (`quay.io/keycloak/keycloak:26.7.4`) no Podman/Docker: a app cria o container com
+  a pasta de **providers** e a pasta de **dados H2** montadas do disco (por omissão reaproveita a `data/` da
+  distribuição standalone, por isso os realms e utilizadores mantêm-se ao trocar de modo), `--userns=keep-id` para o
+  Keycloak conseguir escrever nessas pastas, e a porta HTTP configurada. Arrancar/parar/reiniciar, **Recriar
+  container** (aplica mudanças de imagem/pastas/porta), logs (`podman logs -f`), e lista de outros containers
+  Keycloak encontrados no motor com **Usar este**.
+- **Providers / SPIs**: lista da pasta de providers (da distribuição ou a montada no container), remover; para cada
+  projeto SPI detetado, **Build & instalar** (`mvn package` + copiar o jar), ou **Instalar todos e reiniciar**.
 - **Administração** (Admin REST API, sem abrir a consola):
   - **Realms**: criar (vazio, **copiar de um realm existente** ou importar de ficheiro), criar vários de uma vez
     (`local, dev, sit`), ativar/desativar **registo de utilizadores**, exportar para JSON (`keycloak-realms/`
@@ -168,6 +177,8 @@ Projetos reais para experimentar tudo (ver [examples/README.md](examples/README.
 | `ms-cliente` | **hexagonal multi-módulo** com dois grupos Swagger |
 | `keycloak-event-logger-spi` | SPI: EventListener |
 | `keycloak-tipo-utilizador-spi` | SPI: autorização de login por tipo de utilizador e client, com script de configuração do fluxo |
+| `keycloak-claim-mapper-spi` | SPI: protocol mapper que põe `tipoUtilizador` como claim nos tokens |
+| `keycloak-rest-resource-spi` | SPI: endpoints REST próprios em `/realms/{realm}/exemplo/{ping,stats,eu}` |
 | `web-app` | site com login/registo via Keycloak (keycloak-js, PKCE) |
 
 ---
