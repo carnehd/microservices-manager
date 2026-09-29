@@ -102,6 +102,9 @@ Nome, estado (ponto verde a correr), branch git atual e número de alterações 
 - **Cabeçalho**: nome, versão, estado (`a correr · porta 8081 · debug 5005`).
 - **Debug** (interruptor, guardado por serviço) + **▶ Arrancar** / **■ Parar**. Em debug injeta
   `-agentlib:jdwp` (`suspend=n`) numa porta própria por serviço — pronto para *attach* do IntelliJ/VS Code.
+- **▶ + dependências**: arranca primeiro os serviços de que este depende (que não estejam já a correr), por ordem,
+  esperando que cada um fique pronto, e depois arranca-o. As dependências são **inferidas** dos URLs da configuração
+  (ex.: `products.base-url: http://localhost:8081` → product-service) e podem ser **editadas** em Configuração.
 - **Build** (`-DskipTests package`), **Clean build** (`clean … package`), **Clean install** (`clean … install`),
   **Spotless** (`mvn spotless:apply` — formata o código) e um interruptor **skip testes** (`-DskipTests`, ligado por
   omissão) que afeta os três builds, **Abrir URL**, **Pasta**. O Swagger é acessível pelo separador Endpoints.
@@ -118,7 +121,7 @@ Separadores:
 | **Ambientes** | compositor de perfis: a partir de `application-local.yml`, escolhe por variável de que ambiente (`dev`, `sit`, `uat`…) vem o valor **ou escreve um valor à mão**, e gera `application-<perfil>.yml` na pasta do serviço; interruptor "usar no arranque"; escolhas guardadas por serviço |
 | **Dependências** | dependências declaradas nos `pom.xml` (por módulo, versão ou "gerida" pelo parent/BOM, scope, etiquetas Spring Boot/Keycloak/Swagger/BD) e árvore completa resolvida com `mvn dependency:tree` |
 | **Git** | branch atual com ↑/↓ face ao remoto, Fetch/Pull/Push; alterações (staged/unstaged/não seguidas) com diff, preparar/despreparar/descartar, commit; criar branch e mudar de branch; histórico. Num monorepo limita-se à pasta do serviço |
-| **Configuração** | tudo o que foi detetado (pasta, módulos, porta, datasource, perfis, wrapper, jar) e as definições de arranque: perfil Spring, **porta HTTP de arranque** (`--server.port`), porta de debug, args JVM e Maven, variáveis de ambiente, caminho do Swagger |
+| **Configuração** | tudo o que foi detetado (pasta, módulos, porta, datasource, perfis, wrapper, jar, contratos, dependências inferidas) e as definições de arranque: perfil Spring, **porta HTTP de arranque** (`--server.port`), porta de debug, args JVM e Maven, variáveis de ambiente, **dependências** para o "Arrancar com dependências" |
 
 ### Keycloak
 

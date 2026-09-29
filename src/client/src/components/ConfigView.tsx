@@ -27,6 +27,7 @@ export function ConfigView({
   const [debugPort, setDebugPort] = useState(settings.debugPort ? String(settings.debugPort) : '')
   const [swaggerPath, setSwaggerPath] = useState(settings.swaggerPath ?? '')
   const [env, setEnv] = useState(envToText(settings.env))
+  const [dependsOn, setDependsOn] = useState((settings.dependsOn ?? []).join(', '))
   const [saving, setSaving] = useState(false)
 
   const save = async (): Promise<void> => {
@@ -40,7 +41,8 @@ export function ConfigView({
         mavenRepoLocal: mavenRepoLocal.trim() || undefined,
         debugPort: parseInt(debugPort, 10) || undefined,
         swaggerPath: swaggerPath.trim() || undefined,
-        env: textToEnv(env)
+        env: textToEnv(env),
+        dependsOn: dependsOn.split(',').map((x) => x.trim()).filter(Boolean)
       })
     } finally {
       setSaving(false)
@@ -118,6 +120,13 @@ export function ConfigView({
             Argumentos Maven extra
             <input className="input mono" value={extraArgs} onChange={(e) => setExtraArgs(e.target.value)} placeholder="-Dmaven.test.skip=true -P local" />
           </label>
+          {svc.kind === 'spring-boot' && (
+            <label>
+              Dependências (nomes de serviços, separados por vírgula) — usadas por "Arrancar com dependências"
+              <input className="input mono" value={dependsOn} onChange={(e) => setDependsOn(e.target.value)} placeholder={svc.dependsOn?.length ? `sugerido: ${svc.dependsOn.join(', ')}` : 'ex.: product-service, user-service'} />
+              {svc.dependsOn?.length ? <span className="muted small">inferidas dos URLs: {svc.dependsOn.join(', ')} — vazio acima = usar estas</span> : <span className="muted small">nenhuma inferida dos URLs da configuração</span>}
+            </label>
+          )}
           <label>
             Variáveis de ambiente (uma por linha, CHAVE=valor)
             <textarea className="input mono" rows={4} value={env} onChange={(e) => setEnv(e.target.value)} placeholder={'DB_HOST=localhost\nSPRING_DATASOURCE_PASSWORD=secret'} />

@@ -14,7 +14,7 @@ import { Badge, StatusPill, isActive } from './common'
 type Tab = 'logs' | 'endpoints' | 'bruno' | 'envs' | 'deps' | 'git' | 'config'
 
 export function ServiceView({
-  svc, state, states, settings, logs, onStart, onStop, onSaveServiceSettings, onSettingsChanged, onGitChanged, notify, fail
+  svc, state, states, settings, logs, onStart, onStartWithDeps, onStop, onSaveServiceSettings, onSettingsChanged, onGitChanged, notify, fail
 }: {
   svc: ServiceInfo
   state?: ProcState
@@ -22,6 +22,7 @@ export function ServiceView({
   settings: AppSettings
   logs: LogsApi
   onStart: (id: string, mode: StartMode) => Promise<void>
+  onStartWithDeps: (id: string, mode: StartMode) => Promise<void>
   onStop: (id: string) => Promise<void>
   onSaveServiceSettings: (id: string, ss: ServiceSettings, quiet?: boolean) => Promise<void>
   onSettingsChanged: () => Promise<void>
@@ -44,6 +45,7 @@ export function ServiceView({
   const running = state?.status === 'running' && !!state.mode && !BUILD_MODES.has(state.mode)
   const port = state?.detectedPort ?? ss.port ?? svc.port ?? 8080
   const baseUrl = `http://localhost:${port}${svc.contextPath ?? ''}`
+  const deps = (ss.dependsOn && ss.dependsOn.length ? ss.dependsOn : svc.dependsOn) ?? []
   const debugPort = ss.debugPort || defaultDebugPort
   // Ficheiros de configuração que o Spring vai carregar com o perfil definido em Configuração
   const profiles = (ss.profile ?? '').split(',').map((p) => p.trim()).filter(Boolean)
@@ -85,6 +87,11 @@ export function ServiceView({
             <button className="btn btn-primary" onClick={() => onStart(svc.id, ss.debug ? 'debug' : 'run')} title={`Carrega ${configFiles}${profiles.length ? '' : ' (sem perfil: define-o em Configuração ou Ambientes)'}${ss.debug ? ` · JDWP em localhost:${debugPort} (suspend=n)` : ''}`}>
               ▶ Arrancar{profileLabel}{ss.port ? ` · :${ss.port}` : ''}{ss.debug ? ' 🐞' : ''}
             </button>
+            {deps.length > 0 && (
+              <button className="btn" onClick={() => onStartWithDeps(svc.id, ss.debug ? 'debug' : 'run')} title={`Arranca primeiro as dependências (${deps.join(', ')}) que não estejam a correr, e depois este serviço`}>
+                ▶ + dependências ({deps.length})
+              </button>
+            )}
           </>
         )}
         {active && (

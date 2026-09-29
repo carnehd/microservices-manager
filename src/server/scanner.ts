@@ -84,6 +84,18 @@ export async function scanFolder(root: string): Promise<ScanResult> {
     svc.openApiFiles = await findOpenApiFiles(svc.path)
     svc.brunoCollections = await findCollectionDirs(svc.path)
   }))
+  // Inferir dependências: um endpoint referido na config que aponta para a porta/host de outro serviço
+  for (const svc of services) {
+    const deps = new Set<string>()
+    for (const ref of svc.refEndpoints ?? []) {
+      for (const other of services) {
+        if (other.id === svc.id || other.kind !== 'spring-boot') continue
+        const isLocal = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|::1)$/i.test(ref.host)
+        if ((isLocal && other.port === ref.port) || other.name === ref.host || other.artifactId === ref.host) deps.add(other.id)
+      }
+    }
+    if (deps.size) svc.dependsOn = [...deps].sort()
+  }
   services.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
   return { root, services, scannedAt: Date.now() }
 }
@@ -134,6 +146,11 @@ function collapse(node: Node, primary: ServiceInfo, leaves: ServiceInfo[], root:
     swaggerPath: primary.swaggerPath ?? cfgLeaf.swaggerPath ?? swaggerLeaf?.swaggerPath,
     apiDocsPath: primary.apiDocsPath ?? cfgLeaf.apiDocsPath ?? swaggerLeaf?.apiDocsPath,
     swaggerGroups: primary.swaggerGroups?.length ? primary.swaggerGroups : cfgLeaf.swaggerGroups,
+    refEndpoints: (() => {
+      const all = leaves.flatMap((l) => l.refEndpoints ?? [])
+      const seen = new Set<string>()
+      return all.filter((r) => (seen.has(`${r.host}:${r.port}`) ? false : seen.add(`${r.host}:${r.port}`)))
+    })(),
     profiles: [...new Set(leaves.flatMap((l) => l.profiles))].sort()
   }
   if (cfgLeaf !== primary) {
@@ -213,9 +230,10 @@ async function analyzeProject(dir: string, root: string): Promise<{ leaf?: Servi
     resourcesDir: resources
   }
 
-  const { config, files, profiles, swaggerGroups } = await readSpringConfig(resources)
+  const { config, files, profiles, swaggerGroups, refs } = await readSpringConfig(resources)
   info.configFiles = files
   info.profiles = profiles
+  if (refs.length) info.refEndpoints = refs
   if (swaggerGroups.length) info.swaggerGroups = swaggerGroups
   const springdoc = deps.find((d) => d.a.startsWith('springdoc-openapi'))
   const springfox = deps.find((d) => d.a.startsWith('springfox'))
@@ -353,6 +371,7 @@ async function readSpringConfig(resources: string): Promise<{
   files: string[]
   profiles: string[]
   swaggerGroups: string[]
+  refs: Array<{ host: string; port: number }>
 }> {
   const config: Record<string, string> = {}
   const files: string[] = []
@@ -376,7 +395,18 @@ async function readSpringConfig(resources: string): Promise<{
     const m = /^springdoc\.group-configs\[\d+\]\.group$/.exec(k)
     if (m && !swaggerGroups.includes(v)) swaggerGroups.push(v)
   }
-  return { config, files, profiles: [...profiles].sort(), swaggerGroups }
+  const refs: Array<{ host: string; port: number }> = []
+  const seen = new Set<string>()
+  for (const v of Object.values(config)) {
+    for (const m of v.matchAll(/https?:\/\/([\w.-]+):(\d+)/g)) {
+      const key = `${m[1]}:${m[2]}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        refs.push({ host: m[1], port: Number(m[2]) })
+      }
+    }
+  }
+  return { config, files, profiles: [...profiles].sort(), swaggerGroups, refs }
 }
 
 function parseProperties(text: string): Record<string, string> {

@@ -47,6 +47,10 @@ export interface ServiceInfo {
   openApiFiles?: string[]
   /** Pastas de coleções Bruno (contêm bruno.json), relativas à pasta do serviço */
   brunoCollections?: string[]
+  /** Endpoints http(s) referidos na configuração (para inferir dependências) */
+  refEndpoints?: Array<{ host: string; port: number }>
+  /** IDs de outros serviços que este consome, inferidos dos URLs da configuração */
+  dependsOn?: string[]
 }
 
 export interface ScanResult {
@@ -86,6 +90,8 @@ export interface ServiceSettings {
   mavenRepoLocal?: string
   /** Saltar testes no Build/Clean build/Clean install (-DskipTests); omissão = true */
   skipTests?: boolean
+  /** Dependências declaradas (ids ou nomes de serviços); vazio = usar as inferidas do scan */
+  dependsOn?: string[]
   /** Arrancar sempre em debug (JDWP) */
   debug?: boolean
   /** Última composição de perfis feita na app (para regenerar com as mesmas escolhas) */

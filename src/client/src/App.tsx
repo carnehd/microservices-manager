@@ -127,6 +127,15 @@ export default function App() {
       fail(e)
     }
   }
+  const startWithDeps = async (id: string, mode: StartMode): Promise<void> => {
+    try {
+      const r = await api.startWithDeps(id, mode)
+      const parts = [r.started.length ? `arrancados: ${r.started.join(', ')}` : '', r.skipped.length ? `já a correr: ${r.skipped.filter((x) => x !== id).join(', ')}` : '', r.failed.length ? `falharam: ${r.failed.join(', ')}` : '']
+      notify(parts.filter(Boolean).join(' · ') || 'sem dependências a arrancar', r.failed.length ? 'error' : 'success')
+    } catch (e) {
+      fail(e)
+    }
+  }
   const stop = async (id: string): Promise<void> => {
     try {
       await api.stop(id)
@@ -186,6 +195,7 @@ export default function App() {
                 settings={settings}
                 logs={logs}
                 onStart={start}
+                onStartWithDeps={startWithDeps}
                 onStop={stop}
                 onSaveServiceSettings={saveServiceSettings}
                 onSettingsChanged={reloadSettings}

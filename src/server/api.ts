@@ -383,7 +383,76 @@ apiRouter.get('/procs/:id/logs', h((req) => pm.getLogs(param(req, 'id'))))
 apiRouter.delete('/procs/:id/logs', h((req) => pm.clearLogs(param(req, 'id'))))
 apiRouter.post('/procs/:id/stop', h((req) => pm.stop(param(req, 'id'))))
 
+/** Resolve um token (id ou nome) para um id de serviço spring-boot existente. */
+function resolveDep(token: string): string | undefined {
+  const t = token.trim()
+  const s = lastScan?.services.find((x) => x.id === t || x.name === t || x.artifactId === t)
+  return s && s.kind === 'spring-boot' ? s.id : undefined
+}
+
+/** Dependências efetivas de um serviço: as declaradas (Configuração) ou, se vazias, as inferidas do scan. */
+function effectiveDeps(id: string): string[] {
+  const declared = getSettings().services[id]?.dependsOn
+  const tokens = declared && declared.length ? declared : (lastScan?.services.find((s) => s.id === id)?.dependsOn ?? [])
+  return [...new Set(tokens.map(resolveDep).filter((x): x is string => !!x && x !== id))]
+}
+
+/** Ordem topológica das dependências (deps antes de quem as usa), à prova de ciclos. */
+function depOrder(rootId: string): string[] {
+  const order: string[] = []
+  const state = new Map<string, 'visiting' | 'done'>()
+  const visit = (id: string): void => {
+    if (state.get(id)) return // já visitado ou em ciclo
+    state.set(id, 'visiting')
+    for (const d of effectiveDeps(id)) visit(d)
+    state.set(id, 'done')
+    if (id !== rootId) order.push(id)
+  }
+  visit(rootId)
+  return order
+}
+
+function waitRunning(id: string, timeoutMs = 180_000): Promise<'running' | 'crashed' | 'timeout'> {
+  return new Promise((resolve) => {
+    const end = Date.now() + timeoutMs
+    const tick = (): void => {
+      const st = pm.getState(id).status
+      if (st === 'running') return resolve('running')
+      if (st === 'crashed' || st === 'stopped') return resolve('crashed')
+      if (Date.now() > end) return resolve('timeout')
+      setTimeout(tick, 500)
+    }
+    tick()
+  })
+}
+
+async function startWithDeps(id: string, mode: StartMode): Promise<{ order: string[]; started: string[]; skipped: string[]; failed: string[] }> {
+  findService(id)
+  const started: string[] = []
+  const skipped: string[] = []
+  const failed: string[] = []
+  for (const depId of depOrder(id)) {
+    if (pm.isActive(depId)) {
+      skipped.push(depId)
+      continue
+    }
+    const ss = getSettings().services[depId] ?? {}
+    startService(depId, ss.debug ? 'debug' : 'run') // cada dependência arranca conforme o seu toggle de debug
+    started.push(depId)
+    const r = await waitRunning(depId)
+    if (r !== 'running') {
+      failed.push(depId)
+      pm.log(id, 'system', `⚠ dependência ${depId} ${r === 'timeout' ? 'não ficou pronta a tempo' : 'falhou ao arrancar'} — a continuar`)
+    }
+  }
+  if (!pm.isActive(id)) startService(id, mode)
+  else skipped.push(id)
+  return { order: depOrder(id), started, skipped, failed }
+}
+
 apiRouter.post('/services/:id/start', h((req) => startService(param(req, 'id'), req.body?.mode as StartMode)))
+apiRouter.get('/services/:id/dep-order', h((req) => ({ effective: effectiveDeps(param(req, 'id')), order: depOrder(param(req, 'id')) })))
+apiRouter.post('/services/:id/start-with-deps', h((req) => startWithDeps(param(req, 'id'), req.body?.mode as StartMode)))
 apiRouter.get('/services/:id/debug-port', h((req) => defaultDebugPort(param(req, 'id'), getSettings())))
 apiRouter.get('/services/:id/envs', h(async (req) => {
   const svc = findService(param(req, 'id'))
