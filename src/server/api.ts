@@ -7,6 +7,7 @@ import { listDirs, openPath, openTerminal } from './fsapi'
 import { containerAction, containerState, engineInfo, ensureContainer, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
 import * as redisOps from './redis'
 import { depsCommandArgs, listDeps } from './deps'
+import { parse as parseYaml } from 'yaml'
 import { runDiagnostics } from './diagnostics'
 import { composeEnv, listEnvs } from './envs'
 import * as gitOps from './git'
@@ -409,6 +410,15 @@ apiRouter.post('/kc/recreate', h(async () => {
 }))
 apiRouter.post('/kc/deploy/:id', h((req) => deploySpi(param(req, 'id'), { build: req.body?.build !== false, restart: req.body?.restart !== false, jar: str(req.body?.jar) || undefined, replaceOthers: req.body?.replaceOthers !== false })))
 apiRouter.get('/services/:id/jar', h((req) => jarInfo(findService(param(req, 'id')))))
+apiRouter.get('/services/:id/openapi', h(async (req) => {
+  const svc = findService(param(req, 'id'))
+  const rel = str(req.query.path)
+  if (!(svc.openApiFiles ?? []).includes(rel)) throw new Error('Ficheiro OpenAPI não reconhecido para este serviço')
+  const full = join(svc.path, rel)
+  const text = await fs.readFile(full, 'utf8')
+  // devolve sempre JSON, mesmo que o contrato esteja em YAML
+  return rel.endsWith('.json') ? JSON.parse(text) : parseYaml(text)
+}))
 apiRouter.delete('/kc/providers/:name', h((req) => removeProviderJar(param(req, 'name'))))
 apiRouter.post('/kc/admin', h((req) => {
   const a = admin()

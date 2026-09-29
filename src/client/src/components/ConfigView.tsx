@@ -73,6 +73,7 @@ export function ConfigView({
             )}
             {svc.profiles.length > 0 && <tr><th>Perfis</th><td className="mono">{svc.profiles.join(', ')}</td></tr>}
             {svc.configFiles.length > 0 && <tr><th>Ficheiros config</th><td className="mono">{svc.configFiles.join(', ')}{svc.modules ? <span className="muted"> em {svc.resourcesDir}</span> : null}</td></tr>}
+            {svc.openApiFiles?.length ? <tr><th>Contratos OpenAPI</th><td className="mono" style={{ whiteSpace: 'pre-wrap' }}>{svc.openApiFiles.join('\n')}</td></tr> : null}
             {svc.spiProviders.length > 0 && <tr><th>SPIs (META-INF/services)</th><td className="mono">{svc.spiProviders.join('\n')}</td></tr>}
             <tr><th>Maven wrapper</th><td className="mono">{svc.wrapperDir ?? 'não encontrado (usa mvn global)'}</td></tr>
             <tr><th>Jar em target/</th><td className="mono">{svc.jarPath ?? '— (faz Build)'}</td></tr>

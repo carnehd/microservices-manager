@@ -58,12 +58,26 @@ export function EndpointsView({
   const [showAuth, setShowAuth] = useState(false)
   const [apiGroups, setApiGroups] = useState<Array<{ name: string; url: string }>>([])
   const [apiGroup, setApiGroup] = useState<string>('')
+  const openApiFiles = svc.openApiFiles ?? []
+  const [source, setSource] = useState<string>('runtime') // 'runtime' | 'file:<path>'
   const [useToken, setUseToken] = useState(true)
   const token = useAuthToken()
 
-  const loadSpec = useCallback(async (groupName?: string) => {
+  const loadSpec = useCallback(async (groupName?: string, src?: string) => {
     setSpecError(null)
     setOps(null)
+    const useSource = src ?? source
+    if (useSource.startsWith('file:')) {
+      setApiGroups([])
+      try {
+        const doc = await api.openApiFile(svc.id, useSource.slice(5))
+        setOps(parseOpenApi(doc))
+      } catch (e) {
+        setOps([])
+        setSpecError(`Não consegui ler ${useSource.slice(5)}: ${e instanceof Error ? e.message : e}`)
+      }
+      return
+    }
     const docsPath = svc.apiDocsPath ?? '/v3/api-docs'
     // Vários Swaggers no mesmo serviço (grupos springdoc): /v3/api-docs/swagger-config lista-os
     let candidates: string[] = [...new Set([docsPath, '/v3/api-docs', '/v2/api-docs'])]
@@ -95,9 +109,9 @@ export function EndpointsView({
     setOps([])
     setSpecError('Sem OpenAPI em /v3/api-docs — usa o pedido livre.')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseUrl, svc.apiDocsPath])
+  }, [baseUrl, svc.apiDocsPath, svc.id, source])
 
-  // Carrega o OpenAPI mesmo que o serviço não tenha sido arrancado pela app (pode estar a correr no IDE)
+  // Carrega o OpenAPI: de ficheiro (sempre) ou de runtime (serviço a correr, aqui ou no IDE)
   useEffect(() => {
     void loadSpec()
   }, [running, loadSpec])
@@ -179,8 +193,18 @@ export function EndpointsView({
           <input className="input grow" placeholder="filtrar…" value={filter} onChange={(e) => setFilter(e.target.value)} />
           <button className="btn btn-sm" onClick={() => loadSpec()} title="Recarregar OpenAPI">⟳</button>
         </div>
-        {apiGroups.length > 0 && (
+        {openApiFiles.length > 0 && (
           <div className="ep-list-head" style={{ top: 44 }}>
+            <label className="inline grow">Origem
+              <select className="input grow" value={source} onChange={(e) => { setSource(e.target.value); void loadSpec(undefined, e.target.value) }} title="Contrato: ficheiro OpenAPI do projeto (não precisa do serviço a correr). Runtime: /v3/api-docs do serviço em execução.">
+                <option value="runtime">runtime · /v3/api-docs (serviço a correr)</option>
+                {openApiFiles.map((f) => <option key={f} value={`file:${f}`}>contrato · {f}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
+        {apiGroups.length > 0 && source === 'runtime' && (
+          <div className="ep-list-head" style={{ top: openApiFiles.length ? 84 : 44 }}>
             <label className="inline grow">API
               <select className="input grow" value={apiGroup} onChange={(e) => { setApiGroup(e.target.value); void loadSpec(e.target.value) }} title="Grupos Swagger deste serviço (springdoc)">
                 {apiGroups.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
@@ -208,7 +232,8 @@ export function EndpointsView({
       </div>
 
       <div className="ep-main">
-        {!running && <div className="muted small">O serviço não foi arrancado por esta app — os pedidos vão na mesma para {baseUrl}.</div>}
+        {!running && source.startsWith('file:') && <div className="muted small">A ver o contrato {source.slice(5)} — para <b>testar</b>, o serviço tem de estar a responder em {baseUrl}.</div>}
+        {!running && source === 'runtime' && <div className="muted small">O serviço não foi arrancado por esta app — os pedidos vão na mesma para {baseUrl}.</div>}
         {sel?.summary && <div className="muted">{sel.summary}</div>}
         <div className="row">
           <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>

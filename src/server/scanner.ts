@@ -78,6 +78,8 @@ export async function scanFolder(root: string): Promise<ScanResult> {
 
   const services: ServiceInfo[] = []
   collect(await walk(root, 0), root, services)
+  // Ficheiros OpenAPI (contract-first) por serviço já colapsado (num multi-módulo cobre todos os módulos)
+  await Promise.all(services.map(async (svc) => { svc.openApiFiles = await findOpenApiFiles(svc.path) }))
   services.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
   return { root, services, scannedAt: Date.now() }
 }
@@ -266,6 +268,42 @@ async function hasSpringBootApplication(dir: string): Promise<boolean> {
   }
   for (const src of ['java', 'kotlin']) if (await search(join(dir, 'src', 'main', src))) return true
   return false
+}
+
+const OPENAPI_SKIP = new Set(['target', 'build', 'dist', 'out', 'node_modules', '.git', '.idea', '.mvn'])
+/** Procura ficheiros OpenAPI/Swagger (contract-first) no projeto: .yaml/.yml/.json com openapi:/swagger: no topo. */
+async function findOpenApiFiles(root: string): Promise<string[]> {
+  const out: string[] = []
+  let budget = 400 // limite de ficheiros lidos, para o scan não ficar lento
+  async function walk(dir: string, depth: number): Promise<void> {
+    if (depth > 5 || budget <= 0) return
+    let entries: import('fs').Dirent[]
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (budget <= 0) return
+      if (e.isDirectory()) {
+        // NÃO ignora src/ (os contratos ficam em src/main/resources); só salta build e afins
+        if (!OPENAPI_SKIP.has(e.name) && !e.name.startsWith('.')) await walk(join(dir, e.name), depth + 1)
+        continue
+      }
+      if (!/\.(ya?ml|json)$/i.test(e.name)) continue
+      if (/^application(-[\w.-]+)?\.(ya?ml|properties)$/i.test(e.name) || e.name === 'bootstrap.yml') continue
+      budget--
+      const full = join(dir, e.name)
+      try {
+        const head = (await fs.readFile(full, 'utf8')).slice(0, 4000)
+        if (/(^|\n)\s*["']?(openapi|swagger)["']?\s*:/i.test(head)) out.push(posix(relative(root, full)))
+      } catch {
+        /* ignora ilegíveis */
+      }
+    }
+  }
+  await walk(root, 0)
+  return out.sort()
 }
 
 async function listDir(dir: string): Promise<string[]> {

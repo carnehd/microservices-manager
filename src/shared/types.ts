@@ -43,6 +43,8 @@ export interface ServiceInfo {
   modules?: string[]
   /** Grupos springdoc detetados na configuração (springdoc.group-configs) */
   swaggerGroups?: string[]
+  /** Ficheiros OpenAPI/Swagger (contract-first) encontrados no projeto, relativos à pasta do serviço */
+  openApiFiles?: string[]
 }
 
 export interface ScanResult {

@@ -105,6 +105,7 @@ export const api = {
   kcRestart: () => req<ProcState>('POST', '/api/kc/restart'),
   kcDeploySpi: (id: string, opts: { build: boolean; restart: boolean; jar?: string; replaceOthers?: boolean }) => req<DeployResult>('POST', `/api/kc/deploy/${enc(id)}`, opts),
   jarInfo: (id: string) => req<JarInfo>('GET', `/api/services/${enc(id)}/jar`),
+  openApiFile: (id: string, path: string) => req<unknown>('GET', `/api/services/${enc(id)}/openapi?path=${enc(path)}`),
   kcRemoveProvider: (name: string) => req<void>('DELETE', `/api/kc/providers/${enc(name)}`),
   kcAdmin: {
     realms: () => admin<KcRealm[]>('realms'),
