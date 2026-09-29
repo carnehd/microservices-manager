@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AppSettings, KeycloakInfo, ProcState, ScanResult } from '../../../shared/types'
+import type { AppSettings, JarInfo, KeycloakInfo, ProcState, ScanResult } from '../../../shared/types'
 import { api } from '../api'
 import type { LogsApi } from '../hooks'
 import { KcAdminPanel } from './KcAdminPanel'
 import { LogView } from './LogView'
-import { StatusPill, isActive } from './common'
+import { Badge, StatusPill, isActive } from './common'
 
 type Tab = 'logs' | 'providers' | 'admin'
 const KC_ID = 'keycloak'
@@ -57,14 +57,39 @@ export function KeycloakView({
   }
 
   const spis = scan?.services.filter((s) => s.kind === 'keycloak-spi') ?? []
+  const [installMode, setInstallMode] = useState<'build' | 'existing'>('build')
+  const [restartAfter, setRestartAfter] = useState(true)
+  const [jars, setJars] = useState<Record<string, JarInfo>>({})
+  const [chosenJar, setChosenJar] = useState<Record<string, string>>({})
 
-  const installAll = (): Promise<void> => run('deploy-all', async () => {
-    for (const s of spis) await api.kcDeploySpi(s.id)
-    await api.kcRestart()
+  const refreshJars = useCallback(async () => {
+    const out: Record<string, JarInfo> = {}
+    await Promise.all(spis.map(async (s) => { out[s.id] = await api.jarInfo(s.id).catch(() => ({ candidates: [], installed: [] })) }))
+    setJars(out)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scan])
+  useEffect(() => {
+    if (tab === 'providers') void refreshJars()
+  }, [tab, refreshJars])
+
+  const install = (id: string, name: string): Promise<void> => run(`deploy:${id}`, async () => {
+    const r = await api.kcDeploySpi(id, { build: installMode === 'build', restart: restartAfter, jar: installMode === 'existing' ? chosenJar[id] : undefined })
+    notify(`${r.dest.split(/[\\/]/).pop()} instalado${r.removed.length ? ` (substituiu ${r.removed.join(', ')})` : ''}${r.restarted ? '; Keycloak reiniciado' : ' — reinicia o Keycloak para o carregar'}`, 'success')
   }, () => {
     void refreshInfo()
-    notify(`${spis.length} SPI(s) instalados; Keycloak a reiniciar`, 'success')
+    void refreshJars()
   })
+
+  const installAll = (): Promise<void> => run('deploy-all', async () => {
+    for (const s of spis) await api.kcDeploySpi(s.id, { build: installMode === 'build', restart: false })
+    if (restartAfter) await api.kcRestart()
+  }, () => {
+    void refreshInfo()
+    void refreshJars()
+    notify(`${spis.length} SPI(s) instalados${restartAfter ? '; Keycloak reiniciado' : ''}`, 'success')
+  })
+
+  const fmtDate = (ms: number): string => new Date(ms).toLocaleString()
 
   return (
     <main className="service">
@@ -139,31 +164,62 @@ export function KeycloakView({
               {active && <p className="muted small">Alterações em providers/ só são carregadas depois de reiniciar o Keycloak.</p>}
             </section>
             <section>
-              <div className="row">
+              <div className="row" style={{ flexWrap: 'wrap' }}>
                 <h3 className="grow">Projetos SPI encontrados no scan</h3>
-                {spis.length > 1 && <button className="btn btn-sm btn-primary" disabled={!info?.valid || !!busy} onClick={installAll} title="Build + copiar cada jar para providers, e reiniciar o Keycloak no fim">{busy === 'deploy-all' ? 'A instalar…' : `⇪ Instalar todos (${spis.length}) e reiniciar`}</button>}
+                <label className="inline">Instalar
+                  <select className="input" value={installMode} onChange={(e) => setInstallMode(e.target.value as 'build' | 'existing')} title="Build: a app corre mvn package antes de copiar. Jar existente: usa o jar que já está em target/ (ex.: compilado no IntelliJ)">
+                    <option value="build">com build (mvn package)</option>
+                    <option value="existing">jar já compilado (IntelliJ)</option>
+                  </select>
+                </label>
+                <label className={`switch${restartAfter ? ' on' : ''}`} title="Depois de copiar o jar, reinicia o Keycloak para carregar o provider">
+                  <input type="checkbox" checked={restartAfter} onChange={(e) => setRestartAfter(e.target.checked)} />
+                  <span className="switch-track"><span className="switch-knob" /></span>
+                  <span className="switch-label">reiniciar o Keycloak depois</span>
+                </label>
+                <button className="btn btn-sm" disabled={!!busy} onClick={() => refreshJars()} title="reler os jars em target/">⟳</button>
+                {spis.length > 1 && <button className="btn btn-sm btn-primary" disabled={!info?.valid || !!busy} onClick={installAll}>{busy === 'deploy-all' ? 'A instalar…' : `⇪ Instalar todos (${spis.length})`}</button>}
               </div>
               {!spis.length && <p className="muted">Nenhum projeto com dependências org.keycloak encontrado.</p>}
-              {spis.map((s) => (
-                <div className="row" key={s.id}>
-                  <div className="grow">
-                    <div>{s.name} <span className="muted small mono">{s.relativePath}</span></div>
-                    <div className="muted small mono">{s.spiProviders.map((p) => p.split('.').pop()).join(', ') || 'sem META-INF/services'}</div>
+              {spis.map((s) => {
+                const j = jars[s.id] ?? { candidates: [], installed: [] }
+                const selected = j.candidates.find((c) => c.name === chosenJar[s.id]) ?? j.candidates[0]
+                return (
+                  <div className="row spi-row" key={s.id}>
+                    <div className="grow">
+                      <div>{s.name} <span className="muted small mono">{s.relativePath}</span></div>
+                      <div className="muted small mono">{s.spiProviders.map((p) => p.split('.').pop()).join(', ') || 'sem META-INF/services'}</div>
+                      <div className="small">
+                        <span className="muted">instalado: </span>
+                        {j.installed.length ? j.installed.map((i) => (
+                          <span key={i.name} className="mono" title={`${i.name} · ${fmtDate(i.mtime)}`}>
+                            <Badge tone="green">{i.version ?? i.name}</Badge>
+                            <a className="link small" onClick={() => { if (confirm(`Remover ${i.name} de providers/?`)) void run('remove', () => api.kcRemoveProvider(i.name), () => { void refreshInfo(); void refreshJars() }) }}> ✕</a>{' '}
+                          </span>
+                        )) : <span className="muted">nenhuma versão</span>}
+                      </div>
+                      <div className="small row" style={{ padding: 0 }}>
+                        <span className="muted">em target/: </span>
+                        {!j.candidates.length && <span className="text-error mono">sem jar (compila no IntelliJ ou usa "com build")</span>}
+                        {j.candidates.length === 1 && <span className="mono muted">{j.candidates[0].name} · {fmtDate(j.candidates[0].mtime)} · {Math.round(j.candidates[0].size / 1024)} KB</span>}
+                        {j.candidates.length > 1 && (
+                          <select className="input" value={selected?.name ?? ''} onChange={(e) => setChosenJar({ ...chosenJar, [s.id]: e.target.value })} title="várias versões em target/ — escolhe a que queres instalar">
+                            {j.candidates.map((c) => <option key={c.name} value={c.name}>{c.version ?? c.name} · {fmtDate(c.mtime)} · {Math.round(c.size / 1024)} KB</option>)}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-sm btn-primary"
+                      disabled={!info?.valid || !!busy || isActive(states[s.id]) || (installMode === 'existing' && !selected)}
+                      onClick={() => install(s.id, s.name)}
+                      title={installMode === 'build' ? 'mvn package + copiar o jar mais recente para providers' : `copiar ${selected?.name ?? ''} para providers`}
+                    >
+                      {busy === `deploy:${s.id}` ? 'A instalar…' : installMode === 'build' ? '⇪ Build & instalar' : `⇪ Instalar ${selected?.version ?? 'jar'}`}
+                    </button>
                   </div>
-                  <button
-                    className="btn btn-sm btn-primary"
-                    disabled={!info?.valid || !!busy || isActive(states[s.id])}
-                    onClick={() =>
-                      run(`deploy:${s.id}`, () => api.kcDeploySpi(s.id), () => {
-                        void refreshInfo()
-                        notify(active ? 'Provider instalado. Reinicia o Keycloak para o carregar.' : 'Provider instalado.', 'success')
-                      })
-                    }
-                  >
-                    {busy === `deploy:${s.id}` ? 'A compilar…' : 'Build & instalar'}
-                  </button>
-                </div>
-              ))}
+                )
+              })}
             </section>
           </div>
         )}

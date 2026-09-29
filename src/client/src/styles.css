@@ -278,3 +278,5 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 .diag-info { color: var(--muted); }
 .diag-name { width: 220px; white-space: nowrap; }
 .diag-hint { color: var(--amber); font-family: system-ui, sans-serif; margin-top: 2px; }
+.spi-row { align-items: flex-start; border-top: 1px solid var(--border); padding-top: 8px; }
+.spi-row select.input { padding: 3px 6px; }

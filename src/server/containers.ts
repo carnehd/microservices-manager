@@ -174,14 +174,39 @@ export interface RunOptions {
   recreate?: boolean
 }
 
+/** Espera até o container estar num dos estados (ex.: depois de `stop`, o podman fica em "stopping" uns instantes). */
+export async function waitForState(cmd: string, name: string, states: string[], timeoutMs = 20_000): Promise<string | undefined> {
+  const end = Date.now() + timeoutMs
+  let last: string | undefined
+  while (Date.now() < end) {
+    last = (await listContainers(cmd)).find((c) => c.name === name)?.state
+    if (!last || states.includes(last)) return last
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  return last
+}
+
 export async function ensureContainer(cmd: string, opts: RunOptions): Promise<string> {
   if (!/^[\w.-]+$/.test(opts.name)) throw new Error('Nome de container inválido')
   const existing = (await listContainers(cmd)).find((c) => c.name === opts.name)
-  if (existing && opts.recreate) await run(cmd, ['rm', '-f', opts.name], 60_000)
-  else if (existing?.state === 'running') return `${opts.name} já está a correr`
+  if (existing && opts.recreate) {
+    await run(cmd, ['rm', '-f', opts.name], 60_000)
+    await waitForState(cmd, opts.name, [], 10_000) // até desaparecer
+  } else if (existing?.state === 'running') return `${opts.name} já está a correr`
   else if (existing) {
-    await run(cmd, ['start', opts.name], 60_000)
-    return `${opts.name} iniciado`
+    await waitForState(cmd, opts.name, ['exited', 'stopped', 'created', 'configured'])
+    let lastErr: unknown
+    for (let i = 0; i < 5; i++) {
+      try {
+        await run(cmd, ['start', opts.name], 60_000)
+        return `${opts.name} iniciado`
+      } catch (e) {
+        lastErr = e
+        if (!/state improper|stopping/i.test(String(e))) throw e
+        await new Promise((r) => setTimeout(r, 1000))
+      }
+    }
+    throw lastErr
   }
   const args = ['run', '-d', '--name', opts.name, ...(opts.runArgs ?? [])]
   for (const p of opts.ports) args.push('-p', p)

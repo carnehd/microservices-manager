@@ -134,6 +134,27 @@ export interface DeployResult {
   jar: string
   dest: string
   keycloakRunning: boolean
+  /** true se a app compilou (mvn package) antes de copiar */
+  built: boolean
+  /** true se o Keycloak foi reiniciado a seguir */
+  restarted: boolean
+  /** outras versões do mesmo artefacto removidas de providers/ */
+  removed: string[]
+}
+export interface JarFile {
+  name: string
+  path: string
+  /** parte do nome a seguir ao artifactId- (ex.: 1.0.0, 1.1.0-SNAPSHOT) */
+  version?: string
+  /** data de modificação (ms) */
+  mtime: number
+  size: number
+}
+export interface JarInfo {
+  /** jars candidatos em target/ (do mais recente para o mais antigo) */
+  candidates: JarFile[]
+  /** jars deste artefacto já em providers/ */
+  installed: JarFile[]
 }
 
 export interface KcRealm {

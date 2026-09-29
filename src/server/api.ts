@@ -1,10 +1,10 @@
 import { Router, type Request, type Response } from 'express'
-import { promises as fs } from 'fs'
+import { promises as fs, readdirSync, statSync } from 'fs'
 import { basename, delimiter, join } from 'path'
-import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type StartMode } from '../shared/types'
+import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type StartMode } from '../shared/types'
 import { addSseClient, broadcast } from './events'
 import { listDirs, openPath, openTerminal } from './fsapi'
-import { containerAction, containerState, engineInfo, ensureContainer, listContainers, listImages, machineAction, removeImage, type ContainerAction } from './containers'
+import { containerAction, containerState, engineInfo, ensureContainer, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
 import * as redisOps from './redis'
 import { depsCommandArgs, listDeps } from './deps'
 import { runDiagnostics } from './diagnostics'
@@ -192,6 +192,7 @@ async function stopKeycloak(): Promise<void> {
   if (c?.state === 'running') {
     pm.log(KC_ID, 'system', `⏹ ${containerCmd()} stop ${kc.containerName}`)
     await containerAction(containerCmd(), 'stop', kc.containerName)
+    await waitForState(containerCmd(), kc.containerName, ['exited', 'stopped', 'created'])
   }
   if (pm.isActive(KC_ID)) {
     await pm.stop(KC_ID)
@@ -204,22 +205,71 @@ async function restartKeycloak(): Promise<ProcState> {
   return startKeycloak()
 }
 
-async function deploySpi(id: string): Promise<DeployResult> {
+/** Todos os jars "instaláveis" de uma pasta (sem sources/javadoc/tests nem original-*), do mais recente para o mais antigo. */
+function listJars(dir: string, artifactId?: string): JarFile[] {
+  let names: string[] = []
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return []
+  }
+  return names
+    .filter((f) => f.endsWith('.jar') && !f.startsWith('original-') && !/-(sources|javadoc|tests)\.jar$/.test(f))
+    .filter((f) => !artifactId || f === `${artifactId}.jar` || f.startsWith(`${artifactId}-`))
+    .map((f) => {
+      const st = statSync(join(dir, f))
+      const version = artifactId && f.startsWith(`${artifactId}-`) ? f.slice(artifactId.length + 1, -4) : undefined
+      return { name: f, path: join(dir, f), version, mtime: st.mtimeMs, size: st.size }
+    })
+    .sort((a, b) => b.mtime - a.mtime)
+}
+
+function jarInfo(svc: ServiceInfo): JarInfo {
+  const moduleDir = svc.moduleDir ?? svc.path
+  const artifactId = svc.modules ? basename(moduleDir) : svc.artifactId
+  return {
+    candidates: listJars(join(moduleDir, 'target'), artifactId),
+    installed: listJars(kcDirs().providersDir, artifactId)
+  }
+}
+
+/**
+ * Instala um SPI: com build=true compila com Maven primeiro; com build=false usa um jar já em target/
+ * (ex.: compilado no IntelliJ) — `jar` escolhe qual, senão o mais recente. Copia para a pasta de providers,
+ * remove outras versões do mesmo artefacto (dois jars do mesmo SPI dão conflito) e, se restart, reinicia.
+ */
+async function deploySpi(id: string, opts: { build: boolean; restart: boolean; jar?: string; replaceOthers: boolean }): Promise<DeployResult> {
   const svc = findService(id)
   const { providersDir } = kcDirs()
-  startService(id, 'build')
-  const code = await pm.waitForExit(id)
-  if (code !== 0) throw new Error(`Build de ${svc.name} falhou (exit ${code}) — vê os logs do serviço`)
-  const jar = findJar(svc.moduleDir ?? svc.path)
-  if (!jar) throw new Error(`Não encontrei nenhum .jar em ${join(svc.moduleDir ?? svc.path, 'target')}`)
+  if (opts.build) {
+    startService(id, 'build')
+    const code = await pm.waitForExit(id)
+    if (code !== 0) throw new Error(`Build de ${svc.name} falhou (exit ${code}) — vê os logs do serviço`)
+  }
+  const info = jarInfo(svc)
+  const chosen = opts.jar && !opts.build ? info.candidates.find((j) => j.name === opts.jar) : info.candidates[0]
+  if (!chosen) throw new Error(opts.jar ? `Jar ${opts.jar} já não existe em target/` : `Não encontrei nenhum .jar em ${join(svc.moduleDir ?? svc.path, 'target')} — compila primeiro (IntelliJ ou "Build & instalar")`)
   await fs.mkdir(providersDir, { recursive: true })
-  const dest = join(providersDir, basename(jar))
-  await fs.copyFile(jar, dest)
-  pm.log(KC_ID, 'system', `📦 provider instalado: ${dest}`)
-  pm.log(id, 'system', `📦 copiado para ${dest}`)
+  const dest = join(providersDir, chosen.name)
+  const removed: string[] = []
+  if (opts.replaceOthers) {
+    for (const old of info.installed) {
+      if (old.name === chosen.name) continue
+      await fs.rm(old.path)
+      removed.push(old.name)
+    }
+  }
+  await fs.copyFile(chosen.path, dest)
+  pm.log(KC_ID, 'system', `📦 provider instalado: ${dest}${opts.build ? '' : ' (jar já compilado)'}${removed.length ? ` · removido: ${removed.join(', ')}` : ''}`)
+  pm.log(id, 'system', `📦 ${chosen.name} copiado para ${providersDir}`)
   await rescanQuiet()
-  const info = await kcInfoFull()
-  return { jar, dest, keycloakRunning: info.container.running }
+  let restarted = false
+  if (opts.restart) {
+    await restartKeycloak()
+    restarted = true
+  }
+  const kcInfo = await kcInfoFull()
+  return { jar: chosen.path, dest, keycloakRunning: kcInfo.container.running, built: opts.build, restarted, removed }
 }
 
 async function removeProviderJar(name: string): Promise<void> {
@@ -347,7 +397,8 @@ apiRouter.post('/kc/recreate', h(async () => {
   await stopKeycloak()
   return startKeycloak(true)
 }))
-apiRouter.post('/kc/deploy/:id', h((req) => deploySpi(param(req, 'id'))))
+apiRouter.post('/kc/deploy/:id', h((req) => deploySpi(param(req, 'id'), { build: req.body?.build !== false, restart: req.body?.restart !== false, jar: str(req.body?.jar) || undefined, replaceOthers: req.body?.replaceOthers !== false })))
+apiRouter.get('/services/:id/jar', h((req) => jarInfo(findService(param(req, 'id')))))
 apiRouter.delete('/kc/providers/:name', h((req) => removeProviderJar(param(req, 'name'))))
 apiRouter.post('/kc/admin', h((req) => {
   const a = admin()

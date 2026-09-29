@@ -51,16 +51,11 @@ export function ServiceView({
   const configFiles = ['application.yml', ...profiles.map((p) => `application-${p}.yml`)].join(' + ')
   const profileLabel = profiles.length ? ` · ${profiles.join(',')}` : ''
 
-  const deploy = async (): Promise<void> => {
+  const deploy = async (build: boolean): Promise<void> => {
     setDeploying(true)
     try {
-      const r = await api.kcDeploySpi(svc.id)
-      notify(
-        r.keycloakRunning
-          ? `Provider copiado para ${r.dest}. Reinicia o Keycloak para o carregar.`
-          : `Provider copiado para ${r.dest}.`,
-        'success'
-      )
+      const r = await api.kcDeploySpi(svc.id, { build, restart: true })
+      notify(`${build ? 'Compilado e copiado' : 'Jar copiado'} para ${r.dest.split(/[\\/]/).pop()}; Keycloak reiniciado`, 'success')
     } catch (e) {
       fail(e)
     } finally {
@@ -97,9 +92,14 @@ export function ServiceView({
           <button className="btn btn-danger" disabled={state?.status === 'stopping'} onClick={() => onStop(svc.id)}>■ Parar</button>
         )}
         {svc.kind === 'keycloak-spi' && (
-          <button className="btn btn-primary" disabled={active || deploying} onClick={deploy} title="mvn package + copiar jar para keycloak/providers">
-            {deploying ? 'A instalar…' : '⇪ Instalar no Keycloak'}
-          </button>
+          <>
+            <button className="btn btn-primary" disabled={active || deploying} onClick={() => deploy(true)} title="mvn package + copiar o jar para providers + reiniciar o Keycloak">
+              {deploying ? 'A instalar…' : '⇪ Build & instalar'}
+            </button>
+            <button className="btn" disabled={active || deploying || !svc.jarPath} onClick={() => deploy(false)} title={svc.jarPath ? `copiar ${svc.jarPath.split(/[\\/]/).pop()} (já compilado, ex. no IntelliJ) para providers + reiniciar` : 'sem jar em target/ — compila primeiro'}>
+              ⇪ Instalar jar existente
+            </button>
+          </>
         )}
       </div>
       <div className="actions actions-secondary">
