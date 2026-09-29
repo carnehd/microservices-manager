@@ -282,3 +282,16 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 .spi-row select.input { padding: 3px 6px; }
 .sidebar-toolbar { display: flex; gap: 6px; padding: 4px 4px 8px; position: sticky; top: 0; background: var(--bg-2); z-index: 1; }
 .sidebar-toolbar .input { flex: 1; min-width: 0; }
+
+/* Filtro de nível nos logs */
+.log-levels { display: inline-flex; gap: 4px; }
+.chip { font-size: 10px; font-weight: 700; letter-spacing: .03em; padding: 2px 7px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-3); color: var(--text); cursor: pointer; }
+.chip.off { opacity: .4; text-decoration: line-through; }
+.chip-error { border-color: rgba(239, 91, 91, .5); color: #ff7b7b; }
+.chip-warn { border-color: rgba(240, 180, 41, .5); color: #f5c451; }
+.chip-info { border-color: var(--border); color: var(--muted); }
+.chip-debug { border-color: rgba(107, 116, 128, .6); color: #8b95a3; }
+.chip-system { border-color: rgba(90, 176, 255, .4); color: var(--blue); }
+.envs-table .val-edit { min-width: 220px; }
+.envs-table .val-edit .input { width: 190px; }
+.envs-table .val-edit .link { margin-left: 6px; }

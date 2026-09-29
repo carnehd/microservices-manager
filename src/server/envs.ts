@@ -102,6 +102,13 @@ export async function listEnvs(svc: ServiceInfo): Promise<EnvsInfo> {
   }
 }
 
+/** Converte "8080"/"true" nos tipos certos para o YAML; o resto fica string. */
+function coerce(v: string): unknown {
+  if (/^-?\d+$/.test(v)) return Number(v)
+  if (v === 'true' || v === 'false') return v === 'true'
+  return v
+}
+
 export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean): Promise<EnvComposeResult> {
   if (!/^[\w.-]+$/.test(mix.target)) throw new Error(`Nome de perfil inválido: ${mix.target}`)
   const files = await readEnvFiles(svc)
@@ -119,8 +126,16 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
   const warnings: string[] = []
   const applied: string[] = []
   const overrides: Array<{ key: string; path: string[]; value: unknown }> = []
+  const pathOf = (key: string): string[] => {
+    for (const f of files) {
+      const e = f.values.get(key)
+      if (e) return e.path
+    }
+    return key.split('.')
+  }
   for (const [key, env] of Object.entries(mix.choices)) {
     if (env === mix.base) continue
+    if (mix.values && key in mix.values) continue // valor personalizado tem prioridade
     const src = files.find((f) => f.profile === env)
     if (!src) {
       warnings.push(`${key}: ambiente "${env}" não existe — mantido o valor de ${mix.base}`)
@@ -133,6 +148,11 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
     }
     overrides.push({ key, path: entry.path, value: entry.value })
     applied.push(`${key} ← ${env}`)
+  }
+  // valores escritos à mão
+  for (const [key, value] of Object.entries(mix.values ?? {})) {
+    overrides.push({ key, path: pathOf(key), value: coerce(value) })
+    applied.push(`${key} = ${value}`)
   }
 
   const header = [

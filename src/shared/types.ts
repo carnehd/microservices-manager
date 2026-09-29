@@ -84,6 +84,8 @@ export interface ServiceSettings {
   port?: number
   /** Repositório local do Maven só para este serviço (sobrepõe o das Definições) */
   mavenRepoLocal?: string
+  /** Saltar testes no Build/Clean build/Clean install (-DskipTests); omissão = true */
+  skipTests?: boolean
   /** Arrancar sempre em debug (JDWP) */
   debug?: boolean
   /** Última composição de perfis feita na app (para regenerar com as mesmas escolhas) */
@@ -256,6 +258,8 @@ export interface EnvMix {
   target: string
   /** chave → ambiente de onde copiar o valor (chaves ausentes ficam com o valor do base) */
   choices: Record<string, string>
+  /** chave → valor personalizado escrito à mão (sobrepõe-se a choices/base) */
+  values?: Record<string, string>
 }
 export interface EnvKey {
   key: string

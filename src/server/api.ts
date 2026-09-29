@@ -76,9 +76,10 @@ function startService(id: string, mode: StartMode): ProcState {
   const args: string[] = []
   let debugPort: number | undefined
 
-  if (mode === 'build') args.push('-DskipTests', 'package')
-  else if (mode === 'clean-build') args.push('clean', '-DskipTests', 'package')
-  else if (mode === 'clean-install') args.push('clean', '-DskipTests', 'install')
+  const skip = ss.skipTests !== false ? ['-DskipTests'] : []
+  if (mode === 'build') args.push(...skip, 'package')
+  else if (mode === 'clean-build') args.push('clean', ...skip, 'package')
+  else if (mode === 'clean-install') args.push('clean', ...skip, 'install')
   else if (mode === 'spotless') args.push('spotless:apply')
   else if (mode === 'run' || mode === 'debug') {
     if (svc.kind !== 'spring-boot') throw new Error('Só projetos Spring Boot podem ser arrancados')
@@ -393,7 +394,7 @@ apiRouter.get('/services/:id/envs', h(async (req) => {
 apiRouter.post('/services/:id/envs/compose', h(async (req) => {
   const svc = findService(param(req, 'id'))
   const body = (req.body ?? {}) as Partial<EnvMix> & { force?: boolean; setProfile?: boolean }
-  const mix: EnvMix = { base: str(body.base), target: str(body.target), choices: body.choices ?? {} }
+  const mix: EnvMix = { base: str(body.base), target: str(body.target), choices: body.choices ?? {}, values: body.values ?? {} }
   const result = await composeEnv(svc, mix, !!body.force)
   const s = getSettings()
   const ss = { ...(s.services[svc.id] ?? {}), envMix: mix, ...(body.setProfile ? { profile: mix.target } : {}) }

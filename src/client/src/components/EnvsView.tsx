@@ -21,6 +21,7 @@ export function EnvsView({
   const [info, setInfo] = useState<EnvsInfo | null>(null)
   const [target, setTarget] = useState('local-mix')
   const [choices, setChoices] = useState<Record<string, string>>({})
+  const [values, setValues] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [generated, setGenerated] = useState<{ file: string; warnings: string[] } | null>(null)
 
@@ -31,6 +32,7 @@ export function EnvsView({
       if (i.mix) {
         setTarget(i.mix.target)
         setChoices(i.mix.choices)
+        setValues(i.mix.values ?? {})
       }
     } catch (e) {
       fail(e)
@@ -48,6 +50,12 @@ export function EnvsView({
   const usedAtStart = !!targetName && settings.profile === targetName
   const ext = info?.files[base]?.slice(info.files[base].lastIndexOf('.')) ?? '.yml'
 
+  const effective = (r: EnvsInfo['keys'][number]): string => {
+    if (r.key in values) return values[r.key]
+    const chosen = choices[r.key] ?? base
+    return r.values[chosen] ?? r.values[base] ?? ''
+  }
+
   const choose = (key: string, env: string): void => {
     setChoices((c) => {
       const next = { ...c }
@@ -61,7 +69,7 @@ export function EnvsView({
     if (!targetName || targetName === base) return
     setBusy(true)
     try {
-      const r = await api.composeEnv(svc.id, { base, target: targetName, choices, force, setProfile: usedAtStart })
+      const r = await api.composeEnv(svc.id, { base, target: targetName, choices, values, force, setProfile: usedAtStart })
       setGenerated({ file: r.file, warnings: r.warnings })
       notify(`Gerado application-${targetName}${ext}`, 'success')
       await onChanged()
@@ -123,6 +131,7 @@ export function EnvsView({
             <tr>
               <th>Variável</th>
               {sources.map((p) => <th key={p}>{p}</th>)}
+              <th>Valor a usar</th>
             </tr>
           </thead>
           <tbody>
@@ -133,20 +142,25 @@ export function EnvsView({
                   <td className="mono small">{r.key}</td>
                   {sources.map((p) => {
                     const has = r.values[p] !== undefined
+                    const active = !(r.key in values) && p === chosen
                     return (
-                      <td key={p} className={`mono small val${p === chosen ? ' chosen' : ''}${has ? '' : ' missing'}`} title={has ? `${r.values[p]} — clicar para usar o valor de ${p}` : 'não existe neste ambiente'}
-                        onClick={() => has && choose(r.key, p)}>
-                        {p === chosen ? '✓ ' : ''}{r.values[p] ?? '—'}
+                      <td key={p} className={`mono small val${active ? ' chosen' : ''}${has ? '' : ' missing'}`} title={has ? `${r.values[p]} — clicar para usar o valor de ${p}` : 'não existe neste ambiente'}
+                        onClick={() => { if (has) { choose(r.key, p); setValues((v) => { const n = { ...v }; delete n[r.key]; return n }) } }}>
+                        {active ? '✓ ' : ''}{r.values[p] ?? '—'}
                       </td>
                     )
                   })}
+                  <td className="val-edit">
+                    <input className="input mono" value={effective(r)} onChange={(e) => setValues((v) => ({ ...v, [r.key]: e.target.value }))} title="valor personalizado (sobrepõe-se à escolha)" />
+                    {r.key in values && <button className="link small" title="repor o valor da escolha" onClick={() => setValues((v) => { const n = { ...v }; delete n[r.key]; return n })}>↺</button>}
+                  </td>
                 </tr>
               )
             })}
-            {!rows.length && <tr><td colSpan={sources.length + 1} className="muted">Nenhuma variável difere entre ambientes.</td></tr>}
+            {!rows.length && <tr><td colSpan={sources.length + 2} className="muted">Nenhuma variável difere entre ambientes.</td></tr>}
           </tbody>
         </table>
-        <p className="muted small">Clica no valor que queres usar em cada variável. As restantes ficam como em <span className="mono">{base}</span>.</p>
+        <p className="muted small">Clica no valor de um ambiente para o usar, ou escreve um valor à mão na coluna <b>Valor a usar</b>. As restantes ficam como em <span className="mono">{base}</span>.</p>
       </section>
     </div>
   )

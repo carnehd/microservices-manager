@@ -103,18 +103,19 @@ Nome, estado (ponto verde a correr), branch git atual e número de alterações 
 - **Debug** (interruptor, guardado por serviço) + **▶ Arrancar** / **■ Parar**. Em debug injeta
   `-agentlib:jdwp` (`suspend=n`) numa porta própria por serviço — pronto para *attach* do IntelliJ/VS Code.
 - **Build** (`-DskipTests package`), **Clean build** (`clean … package`), **Clean install** (`clean … install`),
-  **Spotless** (`mvn spotless:apply` — formata o código), **Abrir URL**, **Pasta**. (Endpoints/Swagger são separadores.)
+  **Spotless** (`mvn spotless:apply` — formata o código) e um interruptor **skip testes** (`-DskipTests`, ligado por
+  omissão) que afeta os três builds, **Abrir URL**, **Pasta**. O Swagger é acessível pelo separador Endpoints.
 - Ao fechar a app (Ctrl+C) todos os processos filhos são terminados.
 
 Separadores:
 
 | Separador | O que faz |
 |---|---|
-| **Logs** | saída em tempo real com filtro, cores por nível, auto-scroll; deteta "Started … in" e a porta real |
+| **Logs** | saída em tempo real com filtro de texto, **filtro por nível** (ERROR/WARN/INFO/DEBUG/sistema), cores por nível, auto-scroll; deteta "Started … in" e a porta real |
 | **Endpoints** | cliente REST integrado: seletor de **origem** — runtime (`/v3/api-docs` do serviço a correr) ou **ficheiro de contrato OpenAPI** do projeto (contract-first, detetado no scan; funciona com o serviço parado) — e de **grupo/API** quando há vários Swaggers; lista operações por tag, preenche path/query params e um body de exemplo gerado do schema, envia pelo servidor (sem CORS), mostra status/tempo/headers/body, copia como `curl`; pedido livre para qualquer método/URL; **token do Keycloak** anexado como `Bearer` a todos os pedidos |
 | **Swagger** | Swagger UI embebido (ou em nova aba) |
 | **Bruno** | coleções [Bruno](https://www.usebruno.com) do projeto (pastas com `bruno.json` e ficheiros `.bru`, detetadas no scan): lista os pedidos por pasta, seletor de **ambiente** (substitui `{{variáveis}}`), mostra método/URL/headers/body e envia pelo servidor, com token do Keycloak — interface simples sobre as coleções que já tens |
-| **Ambientes** | compositor de perfis: a partir de `application-local.yml`, escolhe por variável de que ambiente (`dev`, `sit`, `uat`…) vem o valor e gera `application-<perfil>.yml` na pasta do serviço; interruptor "usar no arranque"; escolhas guardadas por serviço; não substitui ficheiros que não tenha gerado sem confirmar |
+| **Ambientes** | compositor de perfis: a partir de `application-local.yml`, escolhe por variável de que ambiente (`dev`, `sit`, `uat`…) vem o valor **ou escreve um valor à mão**, e gera `application-<perfil>.yml` na pasta do serviço; interruptor "usar no arranque"; escolhas guardadas por serviço |
 | **Dependências** | dependências declaradas nos `pom.xml` (por módulo, versão ou "gerida" pelo parent/BOM, scope, etiquetas Spring Boot/Keycloak/Swagger/BD) e árvore completa resolvida com `mvn dependency:tree` |
 | **Git** | branch atual com ↑/↓ face ao remoto, Fetch/Pull/Push; alterações (staged/unstaged/não seguidas) com diff, preparar/despreparar/descartar, commit; criar branch e mudar de branch; histórico. Num monorepo limita-se à pasta do serviço |
 | **Configuração** | tudo o que foi detetado (pasta, módulos, porta, datasource, perfis, wrapper, jar) e as definições de arranque: perfil Spring, **porta HTTP de arranque** (`--server.port`), porta de debug, args JVM e Maven, variáveis de ambiente, caminho do Swagger |
