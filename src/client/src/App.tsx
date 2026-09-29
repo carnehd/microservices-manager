@@ -160,7 +160,6 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="brand">⬢ Microservices Manager</span>
         <nav className="nav">
           <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>
             Serviços {runningCount > 0 && <span className="count">{runningCount}</span>}
