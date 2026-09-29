@@ -15,6 +15,7 @@ Substituir a dúzia de terminais, scripts e consolas que um programador abre par
 - ver o que está a correr em containers e na cache Redis;
 - fazer as operações git básicas de cada serviço;
 - e, numa máquina nova, perceber de imediato o que falta instalar (Diagnóstico).
+- ver o **mapa de dependências** entre os microserviços.
 
 Corre como um pequeno servidor Node na própria máquina (Windows, macOS ou Linux); a interface abre no
 browser. Não precisa de instalação nem de permissões de administrador.
@@ -154,6 +155,12 @@ Liga a qualquer Redis (Definições → Redis) ou cria/arranca um container `red
 Estado (versão, chaves, memória, hits/misses), pesquisa de chaves com `SCAN`, valor por tipo (string editável,
 hash, list, set, zset, stream), TTL, apagar, nova chave, flush e consola de comandos (bloqueia `SHUTDOWN`,
 `MONITOR`, `DEBUG`…).
+
+### Mapa de dependências
+
+Vista **Mapa** (no topo) com um grafo dos serviços: nós = microserviços, setas apontam para a dependência
+(inferidas dos URLs da config ou declaradas em Configuração). Nós coloridos pelo estado (a correr/parado/erro) e
+clicáveis para abrir o serviço; os serviços sem relações são listados à parte.
 
 ### Diagnóstico
 

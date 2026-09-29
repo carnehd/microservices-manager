@@ -53,6 +53,10 @@ export interface ServiceInfo {
   dependsOn?: string[]
 }
 
+export interface DepGraph {
+  nodes: Array<{ id: string; name: string; kind: ServiceKind }>
+  edges: Array<{ from: string; to: string }>
+}
 export interface ScanResult {
   root: string
   services: ServiceInfo[]

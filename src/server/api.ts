@@ -453,6 +453,12 @@ async function startWithDeps(id: string, mode: StartMode): Promise<{ order: stri
 apiRouter.post('/services/:id/start', h((req) => startService(param(req, 'id'), req.body?.mode as StartMode)))
 apiRouter.get('/services/:id/dep-order', h((req) => ({ effective: effectiveDeps(param(req, 'id')), order: depOrder(param(req, 'id')) })))
 apiRouter.post('/services/:id/start-with-deps', h((req) => startWithDeps(param(req, 'id'), req.body?.mode as StartMode)))
+apiRouter.get('/deps-graph', h(() => {
+  const nodes = (lastScan?.services ?? []).map((s) => ({ id: s.id, name: s.name, kind: s.kind }))
+  const edges: Array<{ from: string; to: string }> = []
+  for (const s of lastScan?.services ?? []) for (const to of effectiveDeps(s.id)) edges.push({ from: s.id, to })
+  return { nodes, edges }
+}))
 apiRouter.get('/services/:id/debug-port', h((req) => defaultDebugPort(param(req, 'id'), getSettings())))
 apiRouter.get('/services/:id/envs', h(async (req) => {
   const svc = findService(param(req, 'id'))

@@ -5,6 +5,7 @@ import { useLogs } from './hooks'
 import { ContainersView } from './components/ContainersView'
 import { KeycloakView } from './components/KeycloakView'
 import { DiagnosticsView } from './components/DiagnosticsView'
+import { MapView } from './components/MapView'
 import { RedisView } from './components/RedisView'
 import { ServiceView } from './components/ServiceView'
 import { SettingsView } from './components/SettingsView'
@@ -13,7 +14,7 @@ import { Toast, type ToastMsg } from './components/Toast'
 import { FolderPicker } from './components/FolderPicker'
 import { StatusDot, isActive } from './components/common'
 
-type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics'
+type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics' | 'map'
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -163,6 +164,7 @@ export default function App() {
           <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>
             Serviços {runningCount > 0 && <span className="count">{runningCount}</span>}
           </button>
+          <button className={view === 'map' ? 'active' : ''} onClick={() => setView('map')}>Mapa</button>
           <button className={view === 'keycloak' ? 'active' : ''} onClick={() => setView('keycloak')}>
             <StatusDot status={states.keycloak?.status} /> Keycloak
           </button>
@@ -219,6 +221,7 @@ export default function App() {
         )}
         {view === 'containers' && <ContainersView logs={logs} states={states} notify={notify} fail={fail} />}
         {view === 'redis' && <RedisView notify={notify} fail={fail} />}
+        {view === 'map' && <MapView states={states} onSelect={(id) => { setSelectedId(id); setView('services') }} fail={fail} />}
         {view === 'diagnostics' && <DiagnosticsView fail={fail} notify={notify} />}
         {view === 'settings' && <SettingsView settings={settings} scan={scan} onSave={saveSettings} onRescan={() => rescan()} pickFolder={pickFolder} notify={notify} />}
       </div>

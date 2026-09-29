@@ -1,5 +1,5 @@
 import type {
-  AppSettings, ContainerInfo, DeployResult, DirListing, BrunoCollection, DepsInfo, DiagReport, EngineInfo, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
+  AppSettings, ContainerInfo, DeployResult, DirListing, BrunoCollection, DepGraph, DepsInfo, DiagReport, EngineInfo, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
   KeycloakInfo, LogLine, ProcState, ScanResult, StartMode
 } from '../../shared/types'
 
@@ -43,6 +43,7 @@ export const api = {
   saveSettings: (patch: Partial<AppSettings>) => req<AppSettings>('PUT', '/api/settings', patch),
   listDirs: (path?: string) => req<DirListing>('GET', `/api/fs/dirs${path ? `?path=${enc(path)}` : ''}`),
   scan: (root?: string) => req<ScanResult>('POST', '/api/scan', { root }),
+  depsGraph: () => req<DepGraph>('GET', '/api/deps-graph'),
   lastScan: () => req<ScanResult | null>('GET', '/api/scan'),
   states: () => req<ProcState[]>('GET', '/api/procs'),
   logs: (id: string) => req<LogLine[]>('GET', `/api/procs/${enc(id)}/logs`),
