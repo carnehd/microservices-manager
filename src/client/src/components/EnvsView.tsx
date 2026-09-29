@@ -131,7 +131,7 @@ export function EnvsView({
           <thead>
             <tr>
               <th>Variável</th>
-              {sources.map((p) => <th key={p}>{p}</th>)}
+              {sources.map((p) => <th key={p}>{p}{info.k8s.includes(p) && <span className="k8s-tag" title="valores (também) da pasta k8s"> k8s</span>}</th>)}
               <th>Valor a usar</th>
             </tr>
           </thead>

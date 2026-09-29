@@ -273,6 +273,8 @@ export interface EnvsInfo {
   files: Record<string, string>
   /** perfis cujo ficheiro foi gerado pela app (não servem de origem) */
   generated: string[]
+  /** perfis cujos valores vieram (também) da pasta k8s */
+  k8s: string[]
   keys: EnvKey[]
   mix?: EnvMix
 }

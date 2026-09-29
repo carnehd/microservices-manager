@@ -1,10 +1,11 @@
 import { existsSync, promises as fs } from 'fs'
-import { join } from 'path'
+import { basename, join, relative, sep } from 'path'
 import { parseDocument } from 'yaml'
 import type { EnvComposeResult, EnvKey, EnvMix, EnvsInfo, ServiceInfo } from '../shared/types'
 
 export const MARKER = '# Gerado pela Microservices Manager'
 const ORDER = ['local', 'dev', 'sit', 'uat', 'prod']
+const relPosix = (from: string, to: string): string => relative(from, to).split(sep).join('/')
 type Format = 'yaml' | 'properties'
 
 interface EnvFile {
@@ -13,8 +14,14 @@ interface EnvFile {
   format: Format
   text: string
   generated: boolean
+  /** valores (também) vindos da pasta k8s */
+  k8s?: boolean
   values: Map<string, { path: string[]; value: unknown }>
 }
+
+const K8S_ROOT = /^(k8s|kubernetes|deploy|deployment|manifests|helm|kustomize|chart|charts)$/i
+const K8S_SKIP_FOLDER = new Set(['k8s', 'kubernetes', 'deploy', 'deployment', 'manifests', 'helm', 'kustomize', 'chart', 'charts', 'base', 'overlays', 'overlay', 'template', 'templates', 'common', 'defaults'])
+const K8S_GENERIC_FILE = new Set(['application', 'bootstrap', 'configmap', 'config', 'deployment', 'service', 'ingress', 'kustomization', 'values', 'chart', 'secret', 'namespace', 'hpa', 'pvc', 'pv', 'role', 'rolebinding', 'serviceaccount', 'cronjob', 'job', 'statefulset', 'daemonset', 'networkpolicy'])
 
 function resourcesDir(svc: ServiceInfo): string {
   return svc.resourcesDir || join(svc.path, 'src', 'main', 'resources')
@@ -46,6 +53,98 @@ function parseProperties(text: string): Map<string, { path: string[]; value: unk
   return out
 }
 
+function yamlKeys(text: string): Map<string, { path: string[]; value: unknown }> {
+  const out = new Map<string, { path: string[]; value: unknown }>()
+  try {
+    flatten(parseDocument(text).toJS() ?? {}, [], out)
+  } catch {
+    /* yaml inválido */
+  }
+  return out
+}
+
+/** Deteta o ambiente a partir do nome do ficheiro ou da pasta pai. */
+function k8sEnvName(file: string, parent: string): string | undefined {
+  const base = file.replace(/\.(ya?ml|properties)$/i, '')
+  const m = /^application-([\w.-]+)$/i.exec(base)
+  if (m) return m[1]
+  if (!K8S_GENERIC_FILE.has(base.toLowerCase())) return base
+  if (parent && !K8S_SKIP_FOLDER.has(parent.toLowerCase())) return parent
+  return undefined
+}
+
+/** Extrai pares chave→valor de um ficheiro k8s: config Spring simples, ou o data de um ConfigMap. */
+function extractK8sValues(text: string, format: Format): Map<string, { path: string[]; value: unknown }> {
+  if (format === 'properties') return parseProperties(text)
+  let doc: unknown
+  try {
+    doc = parseDocument(text).toJS()
+  } catch {
+    return new Map()
+  }
+  if (!doc || typeof doc !== 'object') return new Map()
+  const obj = doc as Record<string, unknown>
+  const kind = typeof obj.kind === 'string' ? obj.kind : undefined
+  if (kind && kind !== 'ConfigMap') return new Map() // Deployment/Service/… não são config
+  if (kind === 'ConfigMap' && obj.data && typeof obj.data === 'object') {
+    const out = new Map<string, { path: string[]; value: unknown }>()
+    for (const [k, v] of Object.entries(obj.data as Record<string, unknown>)) {
+      const sv = typeof v === 'string' ? v : ''
+      if (/\.(ya?ml)$/i.test(k) && sv.includes('\n')) for (const [kk, e] of yamlKeys(sv)) out.set(kk, e)
+      else if (/\.properties$/i.test(k) && sv.includes('\n')) for (const [kk, e] of parseProperties(sv)) out.set(kk, e)
+      else out.set(k, { path: [k], value: v })
+    }
+    return out
+  }
+  if (obj.apiVersion) return new Map() // manifesto sem data útil
+  return yamlKeys(text) // ficheiro de config "solto" dentro do k8s
+}
+
+/** Procura ficheiros de ambiente dentro de pastas k8s do projeto. */
+async function readK8sEnvFiles(rootPath: string): Promise<EnvFile[]> {
+  const roots: string[] = []
+  try {
+    for (const e of await fs.readdir(rootPath, { withFileTypes: true })) {
+      if (e.isDirectory() && K8S_ROOT.test(e.name)) roots.push(join(rootPath, e.name))
+    }
+  } catch {
+    return []
+  }
+  const out: EnvFile[] = []
+  let budget = 800
+  async function walk(dir: string, depth: number): Promise<void> {
+    if (depth > 4 || budget <= 0) return
+    let entries: import('fs').Dirent[]
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (budget-- <= 0) return
+      if (e.isDirectory()) {
+        if (!e.name.startsWith('.')) await walk(join(dir, e.name), depth + 1)
+        continue
+      }
+      if (!/\.(ya?ml|properties)$/i.test(e.name)) continue
+      const profile = k8sEnvName(e.name, basename(dir))
+      if (!profile) continue
+      const format: Format = e.name.endsWith('.properties') ? 'properties' : 'yaml'
+      let text: string
+      try {
+        text = await fs.readFile(join(dir, e.name), 'utf8')
+      } catch {
+        continue
+      }
+      const values = extractK8sValues(text, format)
+      if (!values.size) continue
+      out.push({ profile, file: relPosix(rootPath, join(dir, e.name)), format, text, generated: false, k8s: true, values })
+    }
+  }
+  for (const r of roots) await walk(r, 0)
+  return out
+}
+
 async function readEnvFiles(svc: ServiceInfo): Promise<EnvFile[]> {
   const dir = resourcesDir(svc)
   let names: string[] = []
@@ -71,6 +170,16 @@ async function readEnvFiles(svc: ServiceInfo): Promise<EnvFile[]> {
       }
     } else values = parseProperties(text)
     files.push({ profile: m[1], file: name, format, text, generated: text.startsWith(MARKER), values })
+  }
+  // Funde os ficheiros da pasta k8s: mesmo ambiente → sem coluna duplicada (resources tem prioridade; k8s só acrescenta chaves em falta)
+  for (const e of await readK8sEnvFiles(svc.path)) {
+    const existing = files.find((f) => f.profile === e.profile)
+    if (existing) {
+      existing.k8s = true
+      for (const [k, val] of e.values) if (!existing.values.has(k)) existing.values.set(k, val)
+    } else {
+      files.push(e)
+    }
   }
   files.sort((a, b) => {
     const ia = ORDER.indexOf(a.profile), ib = ORDER.indexOf(b.profile)
@@ -98,6 +207,7 @@ export async function listEnvs(svc: ServiceInfo): Promise<EnvsInfo> {
     profiles: files.map((f) => f.profile),
     files: Object.fromEntries(files.map((f) => [f.profile, f.file])),
     generated: files.filter((f) => f.generated).map((f) => f.profile),
+    k8s: files.filter((f) => f.k8s).map((f) => f.profile),
     keys: [...keys.values()]
   }
 }
