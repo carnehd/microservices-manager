@@ -5,6 +5,7 @@ import { useLogs } from './hooks'
 import { ContainersView } from './components/ContainersView'
 import { KeycloakView } from './components/KeycloakView'
 import { DiagnosticsView } from './components/DiagnosticsView'
+import { DatabaseView } from './components/DatabaseView'
 import { MapView } from './components/MapView'
 import { RedisView } from './components/RedisView'
 import { ServiceView } from './components/ServiceView'
@@ -14,7 +15,7 @@ import { Toast, type ToastMsg } from './components/Toast'
 import { FolderPicker } from './components/FolderPicker'
 import { StatusDot, isActive } from './components/common'
 
-type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics' | 'map'
+type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics' | 'map' | 'db'
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -169,6 +170,7 @@ export default function App() {
             <StatusDot status={states.keycloak?.status} /> Keycloak
           </button>
           <button className={view === 'containers' ? 'active' : ''} onClick={() => setView('containers')}>Containers</button>
+          <button className={view === 'db' ? 'active' : ''} onClick={() => setView('db')}>Base de dados</button>
           <button className={view === 'redis' ? 'active' : ''} onClick={() => setView('redis')}>Redis</button>
           <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Definições</button>
           <button className={view === 'diagnostics' ? 'active' : ''} onClick={() => setView('diagnostics')}>Diagnóstico</button>
@@ -220,6 +222,7 @@ export default function App() {
           <KeycloakView settings={settings} scan={scan} states={states} logs={logs} onSaveSettings={saveSettings} notify={notify} fail={fail} />
         )}
         {view === 'containers' && <ContainersView logs={logs} states={states} notify={notify} fail={fail} />}
+        {view === 'db' && <DatabaseView settings={settings} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
         {view === 'redis' && <RedisView notify={notify} fail={fail} />}
         {view === 'map' && <MapView states={states} onSelect={(id) => { setSelectedId(id); setView('services') }} fail={fail} />}
         {view === 'diagnostics' && <DiagnosticsView fail={fail} notify={notify} />}

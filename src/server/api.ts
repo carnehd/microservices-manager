@@ -12,6 +12,7 @@ import { runDiagnostics } from './diagnostics'
 import { composeEnv, listEnvs } from './envs'
 import * as gitOps from './git'
 import { listCollections } from './bruno'
+import { createDatabaseManual, createDatabases, dbInfo, listDatabases, runSql, setPasswordLookup, startPostgres } from './db'
 import { KcAdmin, prepareRealmImport } from './keycloak'
 import { ProcessManager } from './processManager'
 import { findJar, scanFolder } from './scanner'
@@ -453,6 +454,16 @@ async function startWithDeps(id: string, mode: StartMode): Promise<{ order: stri
 apiRouter.post('/services/:id/start', h((req) => startService(param(req, 'id'), req.body?.mode as StartMode)))
 apiRouter.get('/services/:id/dep-order', h((req) => ({ effective: effectiveDeps(param(req, 'id')), order: depOrder(param(req, 'id')) })))
 apiRouter.post('/services/:id/start-with-deps', h((req) => startWithDeps(param(req, 'id'), req.body?.mode as StartMode)))
+// ---- Postgres (bases de dados por serviço) ----
+setPasswordLookup((id) => lastScan?.services.find((s) => s.id === id)?.datasource?.password)
+apiRouter.get('/db/info', h(() => dbInfo(lastScan?.services ?? [])))
+apiRouter.post('/db/start', h(() => startPostgres()))
+apiRouter.post('/db/create', h(() => createDatabases(lastScan?.services ?? [])))
+apiRouter.post('/db/create/:id', h((req) => createDatabases(lastScan?.services ?? [], param(req, 'id'))))
+apiRouter.get('/db/databases', h(() => listDatabases()))
+apiRouter.post('/db/create-manual', h((req) => createDatabaseManual((req.body ?? {}) as { db: string; user?: string; password?: string; createUser?: boolean })))
+apiRouter.post('/db/sql', h((req) => runSql(str(req.body?.db), str(req.body?.sql))))
+
 apiRouter.get('/deps-graph', h(() => {
   const nodes = (lastScan?.services ?? []).map((s) => ({ id: s.id, name: s.name, kind: s.kind }))
   const edges: Array<{ from: string; to: string }> = []

@@ -9,6 +9,7 @@ const DEFAULTS: AppSettings = {
   baseDebugPort: 5005,
   keycloak: { httpPort: 8080, adminUser: 'admin', adminPassword: 'admin', containerName: 'msm-keycloak', image: 'quay.io/keycloak/keycloak:26.7.4' },
   redis: { host: 'localhost', port: 6379, db: 0, containerName: 'msm-redis', image: 'docker.io/library/redis:7-alpine' },
+  postgres: { containerName: 'msm-postgres', image: 'docker.io/library/postgres:16-alpine', port: 5432, superUser: 'postgres', superPassword: 'postgres' },
   services: {}
 }
 
@@ -42,6 +43,7 @@ export function getSettings(): AppSettings {
     ...loaded,
     keycloak: { ...DEFAULTS.keycloak, ...(kcLoaded as Partial<AppSettings['keycloak']>) },
     redis: { ...DEFAULTS.redis, ...(loaded.redis ?? {}) },
+    postgres: { ...DEFAULTS.postgres, ...(loaded.postgres ?? {}) },
     services: loaded.services ?? {}
   }
   return cache
@@ -54,6 +56,7 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
     ...patch,
     keycloak: { ...current.keycloak, ...(patch.keycloak ?? {}) },
     redis: { ...current.redis, ...(patch.redis ?? {}) },
+    postgres: { ...current.postgres, ...(patch.postgres ?? {}) },
     services: patch.services ?? current.services
   }
   cache = next

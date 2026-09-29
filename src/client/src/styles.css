@@ -299,3 +299,7 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 .envs-table .val-edit .input { width: 220px; box-sizing: border-box; }
 .envs-table .val-edit .link { margin-left: 6px; }
 .k8s-tag { font-size: 9px; font-weight: 700; color: var(--blue); border: 1px solid rgba(90,176,255,.4); border-radius: 8px; padding: 0 4px; margin-left: 4px; vertical-align: middle; }
+.chips-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips-list .chip { cursor: pointer; }
+.chip-sel { border-color: var(--accent); color: var(--accent); }
+.sql-error { border-color: var(--red); color: #ff9b9b; }

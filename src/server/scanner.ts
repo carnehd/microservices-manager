@@ -256,6 +256,7 @@ async function analyzeProject(dir: string, root: string): Promise<{ leaf?: Servi
     const ds: DatasourceInfo = {
       url: config['spring.datasource.url'],
       username: config['spring.datasource.username'],
+      password: config['spring.datasource.password'],
       driver: config['spring.datasource.driver-class-name']
     }
     if (ds.url || ds.username || ds.driver) info.datasource = ds

@@ -3,6 +3,7 @@ export type ServiceKind = 'spring-boot' | 'keycloak-spi' | 'maven-lib'
 export interface DatasourceInfo {
   url?: string
   username?: string
+  password?: string
   driver?: string
 }
 
@@ -107,6 +108,38 @@ export interface ServiceSettings {
   env?: Record<string, string>
 }
 
+export interface PostgresSettings {
+  containerName: string
+  image: string
+  port: number
+  superUser: string
+  superPassword: string
+  /** pasta do disco montada em /var/lib/postgresql/data; vazio = volume gerido msm-postgres-data */
+  dataDir?: string
+}
+export interface DbServiceInfo {
+  id: string
+  name: string
+  url: string
+  host: string
+  port: number
+  db: string
+  user: string
+  hasPassword: boolean
+  /** aponta para o container partilhado da app (localhost + porta configurada) */
+  managed: boolean
+  dbExists?: boolean
+  roleExists?: boolean
+}
+export interface DbInfo {
+  container: { name: string; image: string; exists: boolean; running: boolean; status?: string }
+  ready: boolean
+  engineError?: string
+  services: DbServiceInfo[]
+  /** containers Postgres encontrados no motor (para escolher um já existente) */
+  candidates: Array<{ name: string; image: string; running: boolean }>
+}
+
 export interface KeycloakSettings {
   httpPort: number
   adminUser: string
@@ -136,6 +169,7 @@ export interface AppSettings {
   containerCommand?: string
   keycloak: KeycloakSettings
   redis: RedisSettings
+  postgres: PostgresSettings
   services: Record<string, ServiceSettings>
 }
 

@@ -18,6 +18,8 @@ export function SettingsView({
     setForm((f) => ({ ...f, keycloak: { ...f.keycloak, [k]: v } }))
   const setRedis = <K extends keyof AppSettings['redis']>(k: K, v: AppSettings['redis'][K]): void =>
     setForm((f) => ({ ...f, redis: { ...f.redis, [k]: v } }))
+  const setPg = <K extends keyof AppSettings['postgres']>(k: K, v: AppSettings['postgres'][K]): void =>
+    setForm((f) => ({ ...f, postgres: { ...f.postgres, [k]: v } }))
 
   const pick = async (cur: string | undefined, apply: (dir: string) => void): Promise<void> => {
     const dir = await pickFolder(cur)
@@ -43,6 +45,13 @@ export function SettingsView({
         image: form.keycloak.image?.trim() || 'quay.io/keycloak/keycloak:26.7.4',
         providersDir: form.keycloak.providersDir?.trim() || undefined,
         dataDir: form.keycloak.dataDir?.trim() || undefined
+      },
+      postgres: {
+        ...form.postgres,
+        containerName: form.postgres.containerName.trim() || 'msm-postgres',
+        port: Number(form.postgres.port) || 5432,
+        superUser: form.postgres.superUser.trim() || 'postgres',
+        image: form.postgres.image.trim() || 'docker.io/library/postgres:16-alpine'
       },
       redis: {
         ...form.redis,
@@ -175,6 +184,22 @@ export function SettingsView({
                 <label>Imagem<input className="input mono" style={{ minWidth: 280 }} value={form.redis.image} onChange={(e) => setRedis('image', e.target.value)} /></label>
               </div>
               <p className="muted small">O botão "Criar e arrancar container" na página Redis faz <span className="mono">podman run -d --name &lt;container&gt; -p &lt;porta&gt;:6379 &lt;imagem&gt;</span> (com <span className="mono">--requirepass</span> se houver password).</p>
+            </div>
+          </section>
+
+          <section>
+            <h3>Base de dados (Postgres)</h3>
+            <div className="form">
+              <div className="form-row">
+                <label>Container<input className="input mono" value={form.postgres.containerName} onChange={(e) => setPg('containerName', e.target.value)} placeholder="nome de um container existente ou o gerido" /></label>
+                <label>Porta<input className="input" type="number" value={form.postgres.port} onChange={(e) => setPg('port', Number(e.target.value))} /></label>
+              </div>
+              <div className="form-row">
+                <label>Superutilizador<input className="input mono" value={form.postgres.superUser} onChange={(e) => setPg('superUser', e.target.value)} /></label>
+                <label>Password<input className="input" type="password" value={form.postgres.superPassword} onChange={(e) => setPg('superPassword', e.target.value)} /></label>
+              </div>
+              <label>Imagem (só se a app criar o container)<input className="input mono" style={{ minWidth: 300 }} value={form.postgres.image} onChange={(e) => setPg('image', e.target.value)} /></label>
+              <p className="muted small">Para usar um container Postgres já existente, mete aqui o nome dele (a app cria bases via <span className="mono">exec … psql</span>). A imagem/porta só contam quando é a app a criar o container.</p>
             </div>
           </section>
 

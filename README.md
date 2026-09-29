@@ -149,6 +149,14 @@ Estado da máquina do Podman (arrancar/parar), containers (iniciar, parar, reini
 imagens (listar, remover). Usa os comandos `podman …` do sistema (Definições → comando de containers; `docker`
 também funciona), por isso mostra tudo o que o motor conhece.
 
+### Base de dados (Postgres)
+
+Vista **Base de dados** para trabalhar com um Postgres em container (Podman/Docker) — **um já existente** (indica o
+nome do container em Definições → Base de dados) ou um gerido pela app. Estado/arranque, lista das bases,
+**Nova base de dados** (nome, utilizador/dono, password) e **consola SQL** por base (criar tabelas, consultas…).
+A app cria as bases via `exec … psql` no container (autentica com o superutilizador/password configurados) e deteta
+containers Postgres a correr para escolheres. As credenciais são **introduzidas** nas Definições, não procuradas nos serviços.
+
 ### Redis
 
 Liga a qualquer Redis (Definições → Redis) ou cria/arranca um container `redis:7-alpine` com um clique.
@@ -170,7 +178,7 @@ serviço (livre / a correr / ocupada por outro processo), Keycloak (container, p
 
 ### Definições
 
-Pasta raiz, Keycloak (imagem, container, pastas montadas, porta, admin), Java/Maven (`JAVA_HOME`, comando `mvn`, preferir wrapper, porta de
+Pasta raiz, Keycloak (imagem, container, pastas montadas, porta, admin), Base de dados (container, porta, superutilizador, password), Java/Maven (`JAVA_HOME`, comando `mvn`, preferir wrapper, porta de
 debug base), comando de containers, Redis (host, porta, DB, password, container e imagem).
 
 ---
