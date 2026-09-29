@@ -1,7 +1,7 @@
 # Microservices Manager
 
 Painel local, no browser, para trabalhar no dia a dia com um conjunto de **microserviços Spring Boot (Maven)**,
-**SPIs de Keycloak**, um **Keycloak** standalone, **containers** (Podman/Docker) e um **Redis** — tudo a partir
+**SPIs de Keycloak**, um **Keycloak** em container, **containers** (Podman/Docker) e um **Redis** — tudo a partir
 de uma única página em `http://localhost:3210`.
 
 ## Objetivo
@@ -30,8 +30,7 @@ browser. Não precisa de instalação nem de permissões de administrador.
 | A app | [Node.js](https://nodejs.org) 20 ou superior |
 | Arrancar/compilar microserviços | JDK 17+ (**21** se usares Keycloak 26) e Maven no `PATH` **ou** `mvnw.cmd`/`mvnw` nos projetos |
 | Separador Git | Git |
-| Keycloak | Distribuição descompactada (pasta com `bin\kc.bat`) |
-| Containers e Redis | Podman (Windows: Podman Desktop + WSL2) ou Docker |
+| Keycloak, Containers e Redis | Podman (Windows: Podman Desktop + WSL2) ou Docker |
 
 Nenhuma destas ferramentas é obrigatória: o que faltar aparece a amarelo/vermelho na página **Diagnóstico** e
 só desativa a funcionalidade correspondente.
@@ -40,7 +39,7 @@ só desativa a funcionalidade correspondente.
 
 1. Descompacta o zip da app (ou copia a pasta do projeto **sem** `node_modules/` e `dist/`).
 2. Duplo clique em **`start.cmd`**: na primeira vez instala as dependências e compila; depois abre o browser.
-3. **Definições** → pasta raiz dos microserviços (e a pasta do Keycloak, se tiveres) → Guardar → **Rescan**.
+3. **Definições** → pasta raiz dos microserviços → Guardar → **Rescan**. Keycloak: página Keycloak → **▶ Arrancar** (a primeira vez faz pull da imagem).
 
 Manualmente: `npm install`, `npm run build`, `npm start`. Porta alternativa: `set MSM_PORT=4000` antes do
 `npm start`. Se a app já estiver a correr noutra janela, um segundo `npm start` limita-se a abrir o browser nela.
@@ -56,7 +55,7 @@ npm start
 ### Onde ficam as definições
 
 `%APPDATA%\microservices-manager\settings.json` (Windows) ou `~/.config/microservices-manager/settings.json`
-(macOS/Linux). Contém a pasta raiz, Keycloak, Redis, comando de containers e as definições por serviço (perfil,
+(macOS/Linux). Contém a pasta raiz, Keycloak (imagem, pastas), Redis, comando de containers e as definições por serviço (perfil,
 porta, debug, escolhas de ambientes).
 
 ### Permissões
@@ -88,7 +87,6 @@ configuração/perfis são lidos do módulo que os tiver. Agregadores com vário
 De cada Spring Boot lê `application.properties/yml`: porta, context-path, datasource, perfis
 (`application-<perfil>.*`), Swagger (springdoc/springfox, incluindo grupos `springdoc.group-configs`),
 base de dados, uso de Keycloak (oauth2 resource server/client) e o Maven wrapper (na pasta ou num ancestral).
-Uma pasta com `bin/kc.bat` dentro da raiz é detetada como Keycloak.
 
 Diagnóstico sem UI: `npm run scan -- C:\pasta\dos\microservicos`.
 
@@ -119,16 +117,13 @@ Separadores:
 
 ### Keycloak
 
-Dois modos (Definições → Keycloak → Modo):
+Corre sempre num **container** (Podman/Docker) a partir da imagem oficial — Definições → Keycloak → *Imagem*
+(`quay.io/keycloak/keycloak:26.7.4`; a versão é a tag). A app cria o container com a pasta de **providers** e a pasta
+de **dados H2** montadas do disco (`<pasta raiz>/keycloak-container/{providers,data}` por omissão), `--userns=keep-id`
+para o Keycloak conseguir escrever nessas pastas, a porta HTTP configurada e o admin de bootstrap. Arrancar, parar,
+reiniciar, **Recriar container** (aplica mudanças de imagem/pastas/porta — os dados ficam no disco), logs
+(`podman logs -f`), e lista de outros containers Keycloak encontrados no motor com **Usar este**.
 
-- **standalone** — distribuição descompactada: `kc.bat start-dev --http-port=…` com admin bootstrap, parar,
-  reiniciar, `kc.bat build`, logs.
-- **container** — imagem oficial (`quay.io/keycloak/keycloak:26.7.4`) no Podman/Docker: a app cria o container com
-  a pasta de **providers** e a pasta de **dados H2** montadas do disco (por omissão reaproveita a `data/` da
-  distribuição standalone, por isso os realms e utilizadores mantêm-se ao trocar de modo), `--userns=keep-id` para o
-  Keycloak conseguir escrever nessas pastas, e a porta HTTP configurada. Arrancar/parar/reiniciar, **Recriar
-  container** (aplica mudanças de imagem/pastas/porta), logs (`podman logs -f`), e lista de outros containers
-  Keycloak encontrados no motor com **Usar este**.
 - **Providers / SPIs**: lista da pasta de providers (da distribuição ou a montada no container), remover; para cada
   projeto SPI detetado, **Build & instalar** (`mvn package` + copiar o jar), ou **Instalar todos e reiniciar**.
 - **Administração** (Admin REST API, sem abrir a consola):
@@ -155,12 +150,12 @@ hash, list, set, zset, stream), TTL, apagar, nova chave, flush e consola de coma
 ### Diagnóstico
 
 Verifica na máquina: Node, Java/`JAVA_HOME`, Maven/wrappers, Git, pasta raiz e serviços detetados, portas de cada
-serviço (livre / a correr / ocupada por outro processo), Keycloak (pasta, versão, porta), Podman e Redis, com
+serviço (livre / a correr / ocupada por outro processo), Keycloak (container, porta), Podman e Redis, com
 ✓/⚠/✗, dicas de correção e **Copiar relatório**. O primeiro sítio a abrir numa máquina nova.
 
 ### Definições
 
-Pasta raiz, Keycloak (pasta, porta, admin), Java/Maven (`JAVA_HOME`, comando `mvn`, preferir wrapper, porta de
+Pasta raiz, Keycloak (imagem, container, pastas montadas, porta, admin), Java/Maven (`JAVA_HOME`, comando `mvn`, preferir wrapper, porta de
 debug base), comando de containers, Redis (host, porta, DB, password, container e imagem).
 
 ---
@@ -202,7 +197,7 @@ src/server/api.ts            rotas /api (scan, arranque, build, deploy SPI, admi
 src/server/events.ts         Server-Sent Events (logs, estados, scans)
 src/server/scanner.ts        deteção de projetos (pom.xml, multi-módulo, application.*)
 src/server/processManager.ts spawn, logs, deteção de estado, kill em árvore
-src/server/keycloak.ts       kc.bat, providers/, cliente Admin REST, clonagem de realms
+src/server/keycloak.ts       cliente Admin REST, clonagem de realms
 src/server/envs.ts           compositor de perfis (application-<ambiente>.yml)
 src/server/deps.ts           dependências Maven (pom.xml)
 src/server/git.ts            operações git por serviço
@@ -224,7 +219,7 @@ examples/                    microserviços de exemplo reais
 - Só projetos **Maven**; Gradle não é detetado.
 - O Swagger embebido pode ficar em branco se o serviço enviar `X-Frame-Options` (Spring Security) — usa
   "Abrir em nova aba" ou o separador Endpoints.
-- O Keycloak, os microserviços e o Redis escutam em `0.0.0.0`; a app só em `127.0.0.1`.
-- Desenvolvido e testado em macOS; os caminhos específicos de Windows (`kc.bat`, `mvnw.cmd`, `taskkill`,
+- Os microserviços escutam em `0.0.0.0`, o Keycloak e o Redis nas portas publicadas pelo container; a app só em `127.0.0.1`.
+- Desenvolvido e testado em macOS; os caminhos específicos de Windows (`mvnw.cmd`, `taskkill`,
   aspas no `cmd.exe`) estão implementados mas devem ser confirmados no primeiro uso — a página Diagnóstico e a
   primeira linha dos Logs (comando exato) ajudam a localizar qualquer diferença.
