@@ -169,7 +169,7 @@ export default function App() {
             <StatusDot status={states.keycloak?.status} /> Keycloak
           </button>
           <button className={view === 'containers' ? 'active' : ''} onClick={() => setView('containers')}>Containers</button>
-          <button className={view === 'db' ? 'active' : ''} onClick={() => setView('db')}>Base de dados</button>
+          <button className={view === 'db' ? 'active' : ''} onClick={() => setView('db')}>BD</button>
           <button className={view === 'redis' ? 'active' : ''} onClick={() => setView('redis')}>Redis</button>
           <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Definições</button>
           <button className={view === 'diagnostics' ? 'active' : ''} onClick={() => setView('diagnostics')}>Diagnóstico</button>
