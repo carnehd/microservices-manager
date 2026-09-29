@@ -4,6 +4,7 @@ import { api } from '../api'
 import type { LogsApi } from '../hooks'
 import { ConfigView } from './ConfigView'
 import { EndpointsView } from './EndpointsView'
+import { BrunoView } from './BrunoView'
 import { EnvsView } from './EnvsView'
 import { GitView } from './GitView'
 import { DepsView } from './DepsView'
@@ -11,7 +12,7 @@ import { LogView } from './LogView'
 import { SwaggerView } from './SwaggerView'
 import { Badge, StatusPill, isActive } from './common'
 
-type Tab = 'logs' | 'endpoints' | 'swagger' | 'envs' | 'deps' | 'git' | 'config'
+type Tab = 'logs' | 'endpoints' | 'bruno' | 'swagger' | 'envs' | 'deps' | 'git' | 'config'
 
 export function ServiceView({
   svc, state, states, settings, logs, onStart, onStop, onSaveServiceSettings, onSettingsChanged, onGitChanged, notify, fail
@@ -106,12 +107,9 @@ export function ServiceView({
         <button className="btn" disabled={active} onClick={() => onStart(svc.id, 'build')} title="mvn -DskipTests package">Build</button>
         <button className="btn" disabled={active} onClick={() => onStart(svc.id, 'clean-build')} title="mvn clean -DskipTests package">Clean build</button>
         <button className="btn" disabled={active} onClick={() => onStart(svc.id, 'clean-install')} title="mvn clean -DskipTests install (instala no repositório local ~/.m2)">Clean install</button>
-        {svc.kind === 'spring-boot' && (
-          <>
-            <button className="btn" onClick={() => setTab('endpoints')}>Endpoints</button>
-            <button className="btn" disabled={!running} onClick={() => setTab('swagger')}>Swagger</button>
-            <button className="btn" disabled={!running} onClick={() => api.openExternal(baseUrl)} title={baseUrl}>Abrir URL</button>
-          </>
+        <button className="btn" disabled={active} onClick={() => onStart(svc.id, 'spotless')} title="mvn spotless:apply — formata o código segundo as regras do projeto">Spotless</button>
+        {svc.kind === 'spring-boot' && running && (
+          <button className="btn" onClick={() => api.openExternal(baseUrl)} title={baseUrl}>Abrir URL</button>
         )}
         <button className="btn" onClick={() => api.openPath(svc.path)}>Pasta</button>
       </div>
@@ -119,6 +117,7 @@ export function ServiceView({
       <div className="tabs">
         <button className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>Logs</button>
         {svc.kind === 'spring-boot' && <button className={tab === 'endpoints' ? 'active' : ''} onClick={() => setTab('endpoints')}>Endpoints</button>}
+        {(svc.brunoCollections?.length ?? 0) > 0 && <button className={tab === 'bruno' ? 'active' : ''} onClick={() => setTab('bruno')}>Bruno<span className="count">{svc.brunoCollections!.length}</span></button>}
         {svc.kind === 'spring-boot' && <button className={tab === 'swagger' ? 'active' : ''} onClick={() => setTab('swagger')}>Swagger</button>}
         {svc.kind === 'spring-boot' && <button className={tab === 'envs' ? 'active' : ''} onClick={() => setTab('envs')}>Ambientes{svc.profiles.length ? <span className="count">{svc.profiles.length}</span> : null}</button>}
         <button className={tab === 'deps' ? 'active' : ''} onClick={() => setTab('deps')}>Dependências</button>
@@ -129,6 +128,7 @@ export function ServiceView({
       <div className="tab-body">
         {tab === 'logs' && <LogView lines={logs.get(svc.id)} version={logs.version} onClear={() => logs.clear(svc.id)} />}
         {tab === 'endpoints' && <EndpointsView svc={svc} baseUrl={baseUrl} running={running} kcPort={settings.keycloak.httpPort} notify={notify} />}
+        {tab === 'bruno' && <BrunoView svc={svc} notify={notify} fail={fail} />}
         {tab === 'swagger' && <SwaggerView url={swaggerUrl} running={running} />}
         {tab === 'envs' && <EnvsView svc={svc} settings={ss} notify={notify} fail={fail} onChanged={onSettingsChanged} onSetProfile={(p) => onSaveServiceSettings(svc.id, { ...ss, profile: p }, true)} />}
         {tab === 'deps' && <DepsView svc={svc} logs={logs} states={states} fail={fail} />}

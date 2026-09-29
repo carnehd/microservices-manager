@@ -11,6 +11,7 @@ import { parse as parseYaml } from 'yaml'
 import { runDiagnostics } from './diagnostics'
 import { composeEnv, listEnvs } from './envs'
 import * as gitOps from './git'
+import { listCollections } from './bruno'
 import { KcAdmin, prepareRealmImport } from './keycloak'
 import { ProcessManager } from './processManager'
 import { findJar, scanFolder } from './scanner'
@@ -78,6 +79,7 @@ function startService(id: string, mode: StartMode): ProcState {
   if (mode === 'build') args.push('-DskipTests', 'package')
   else if (mode === 'clean-build') args.push('clean', '-DskipTests', 'package')
   else if (mode === 'clean-install') args.push('clean', '-DskipTests', 'install')
+  else if (mode === 'spotless') args.push('spotless:apply')
   else if (mode === 'run' || mode === 'debug') {
     if (svc.kind !== 'spring-boot') throw new Error('Só projetos Spring Boot podem ser arrancados')
     args.push('spring-boot:run')
@@ -410,6 +412,7 @@ apiRouter.post('/kc/recreate', h(async () => {
 }))
 apiRouter.post('/kc/deploy/:id', h((req) => deploySpi(param(req, 'id'), { build: req.body?.build !== false, restart: req.body?.restart !== false, jar: str(req.body?.jar) || undefined, replaceOthers: req.body?.replaceOthers !== false })))
 apiRouter.get('/services/:id/jar', h((req) => jarInfo(findService(param(req, 'id')))))
+apiRouter.get('/services/:id/bruno', h((req) => listCollections(findService(param(req, 'id')).path)))
 apiRouter.get('/services/:id/openapi', h(async (req) => {
   const svc = findService(param(req, 'id'))
   const rel = str(req.query.path)

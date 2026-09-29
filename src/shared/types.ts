@@ -45,6 +45,8 @@ export interface ServiceInfo {
   swaggerGroups?: string[]
   /** Ficheiros OpenAPI/Swagger (contract-first) encontrados no projeto, relativos à pasta do serviço */
   openApiFiles?: string[]
+  /** Pastas de coleções Bruno (contêm bruno.json), relativas à pasta do serviço */
+  brunoCollections?: string[]
 }
 
 export interface ScanResult {
@@ -54,8 +56,8 @@ export interface ScanResult {
 }
 
 export type ProcStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed'
-export type StartMode = 'run' | 'debug' | 'build' | 'clean-build' | 'clean-install'
-export const BUILD_MODES: ReadonlySet<StartMode> = new Set<StartMode>(['build', 'clean-build', 'clean-install'])
+export type StartMode = 'run' | 'debug' | 'build' | 'clean-build' | 'clean-install' | 'spotless'
+export const BUILD_MODES: ReadonlySet<StartMode> = new Set<StartMode>(['build', 'clean-build', 'clean-install', 'spotless'])
 
 export interface ProcState {
   id: string
@@ -436,4 +438,32 @@ export interface DepsInfo {
   springBootVersion?: string
   modules: DepsModule[]
   total: number
+}
+
+/** Coleções Bruno (ficheiros .bru) */
+export interface BrunoEnv {
+  name: string
+  vars: Record<string, string>
+}
+export interface BrunoRequest {
+  /** caminho do .bru relativo à pasta da coleção */
+  file: string
+  name: string
+  seq?: number
+  /** subpasta dentro da coleção ('' = raiz) */
+  folder: string
+  method: string
+  url: string
+  headers: Record<string, string>
+  params: Record<string, string>
+  bodyType?: string
+  body?: string
+  auth?: { type: string; token?: string; username?: string; password?: string }
+}
+export interface BrunoCollection {
+  name: string
+  /** pasta da coleção relativa à pasta do serviço */
+  dir: string
+  environments: BrunoEnv[]
+  requests: BrunoRequest[]
 }

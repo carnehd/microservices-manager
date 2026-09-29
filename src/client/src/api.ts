@@ -1,5 +1,5 @@
 import type {
-  AppSettings, ContainerInfo, DeployResult, DirListing, DepsInfo, DiagReport, EngineInfo, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
+  AppSettings, ContainerInfo, DeployResult, DirListing, BrunoCollection, DepsInfo, DiagReport, EngineInfo, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
   KeycloakInfo, LogLine, ProcState, ScanResult, StartMode
 } from '../../shared/types'
 
@@ -106,6 +106,7 @@ export const api = {
   kcDeploySpi: (id: string, opts: { build: boolean; restart: boolean; jar?: string; replaceOthers?: boolean }) => req<DeployResult>('POST', `/api/kc/deploy/${enc(id)}`, opts),
   jarInfo: (id: string) => req<JarInfo>('GET', `/api/services/${enc(id)}/jar`),
   openApiFile: (id: string, path: string) => req<unknown>('GET', `/api/services/${enc(id)}/openapi?path=${enc(path)}`),
+  bruno: (id: string) => req<BrunoCollection[]>('GET', `/api/services/${enc(id)}/bruno`),
   kcRemoveProvider: (name: string) => req<void>('DELETE', `/api/kc/providers/${enc(name)}`),
   kcAdmin: {
     realms: () => admin<KcRealm[]>('realms'),

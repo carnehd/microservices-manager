@@ -2,6 +2,7 @@ import { existsSync, promises as fs, readdirSync, statSync } from 'fs'
 import { basename, dirname, join, relative, sep } from 'path'
 import { XMLParser } from 'fast-xml-parser'
 import { parseAllDocuments } from 'yaml'
+import { findCollectionDirs } from './bruno'
 import type { DatasourceInfo, ScanResult, ServiceInfo, ServiceKind } from '../shared/types'
 
 const IGNORED_DIRS = new Set([
@@ -79,7 +80,10 @@ export async function scanFolder(root: string): Promise<ScanResult> {
   const services: ServiceInfo[] = []
   collect(await walk(root, 0), root, services)
   // Ficheiros OpenAPI (contract-first) por serviço já colapsado (num multi-módulo cobre todos os módulos)
-  await Promise.all(services.map(async (svc) => { svc.openApiFiles = await findOpenApiFiles(svc.path) }))
+  await Promise.all(services.map(async (svc) => {
+    svc.openApiFiles = await findOpenApiFiles(svc.path)
+    svc.brunoCollections = await findCollectionDirs(svc.path)
+  }))
   services.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
   return { root, services, scannedAt: Date.now() }
 }
