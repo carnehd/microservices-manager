@@ -89,6 +89,10 @@ export async function runDiagnostics(ctx: { settings: AppSettings; scan: ScanRes
   else add('Build', `Maven (${settings.mavenCommand || 'mvn'})`, total && withWrapper === total ? 'info' : 'warn', 'não encontrado no PATH',
     total && withWrapper === total ? 'Não faz falta: todos os serviços têm mvnw' : 'Instala o Maven ou usa projetos com mvnw.cmd (Definições → preferir wrapper)')
   if (total) add('Build', 'Maven wrapper', withWrapper === total ? 'ok' : withWrapper ? 'warn' : 'info', `${withWrapper} de ${total} serviços têm mvnw`, withWrapper < total && !mvn ? 'Os serviços sem wrapper não vão conseguir arrancar' : undefined)
+  const repo = settings.mavenRepoLocal?.trim()
+  if (repo) add('Build', 'Repositório Maven local', existsSync(repo) ? 'ok' : 'warn', repo, existsSync(repo) ? undefined : 'A pasta não existe — o Maven cria-a no primeiro build (confirma o caminho)')
+  const mvnSettings = settings.mavenSettingsFile?.trim()
+  if (mvnSettings) add('Build', 'settings.xml', existsSync(mvnSettings) ? 'ok' : 'fail', mvnSettings, existsSync(mvnSettings) ? undefined : 'Ficheiro não encontrado')
   const git = await tryRun('git', ['--version'])
   add('Build', 'Git', git ? 'ok' : 'warn', git ? git.out.split('\n')[0] : 'não encontrado no PATH', git ? undefined : 'O separador Git precisa do Git (https://git-scm.com)')
 

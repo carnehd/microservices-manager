@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import type { GitSummary, ProcState, ScanResult, ServiceInfo, ServiceKind } from '../../../shared/types'
 import { StatusDot } from './common'
 
@@ -10,10 +11,23 @@ const GROUPS: Array<{ kind: ServiceKind; title: string }> = [
 export function Sidebar({
   scan, states, gitSummary, selectedId, onSelect
 }: { scan: ScanResult | null; states: Record<string, ProcState>; gitSummary: GitSummary; selectedId: string | null; onSelect: (id: string) => void }) {
+  const [query, setQuery] = useState('')
+  const [asc, setAsc] = useState(true)
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const list = (scan?.services ?? []).filter((s) => !q || `${s.name} ${s.relativePath}`.toLowerCase().includes(q))
+    return [...list].sort((a, b) => (asc ? 1 : -1) * a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+  }, [scan, query, asc])
+
   return (
     <aside className="sidebar">
+      <div className="sidebar-toolbar">
+        <input className="input" placeholder="procurar serviço…" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <button className="btn btn-sm" onClick={() => setAsc((v) => !v)} title={`ordenar por nome (${asc ? 'A→Z' : 'Z→A'})`}>{asc ? 'A→Z' : 'Z→A'}</button>
+      </div>
       {GROUPS.map(({ kind, title }) => {
-        const items = scan?.services.filter((s) => s.kind === kind) ?? []
+        const items = filtered.filter((s) => s.kind === kind)
         if (!items.length) return null
         return (
           <section key={kind}>
@@ -23,6 +37,7 @@ export function Sidebar({
         )
       })}
       {scan && !scan.services.length && <div className="muted pad small">Nada encontrado.</div>}
+      {scan && scan.services.length > 0 && !filtered.length && <div className="muted pad small">Nenhum serviço corresponde a "{query}".</div>}
     </aside>
   )
 }

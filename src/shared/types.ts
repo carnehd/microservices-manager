@@ -78,6 +78,8 @@ export interface ServiceSettings {
   profile?: string
   /** Porta HTTP com que o serviço arranca (sobrepõe server.port do application.yml) */
   port?: number
+  /** Repositório local do Maven só para este serviço (sobrepõe o das Definições) */
+  mavenRepoLocal?: string
   /** Arrancar sempre em debug (JDWP) */
   debug?: boolean
   /** Última composição de perfis feita na app (para regenerar com as mesmas escolhas) */
@@ -109,6 +111,10 @@ export interface AppSettings {
   javaHome?: string
   mavenCommand: string
   preferWrapper: boolean
+  /** Pasta do repositório local do Maven (-Dmaven.repo.local); vazio = ~/.m2/repository */
+  mavenRepoLocal?: string
+  /** settings.xml a usar (-s); vazio = ~/.m2/settings.xml */
+  mavenSettingsFile?: string
   baseDebugPort: number
   /** Comando do motor de containers: podman (omissão) ou docker */
   containerCommand?: string

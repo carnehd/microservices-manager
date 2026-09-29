@@ -280,3 +280,5 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 .diag-hint { color: var(--amber); font-family: system-ui, sans-serif; margin-top: 2px; }
 .spi-row { align-items: flex-start; border-top: 1px solid var(--border); padding-top: 8px; }
 .spi-row select.input { padding: 3px 6px; }
+.sidebar-toolbar { display: flex; gap: 6px; padding: 4px 4px 8px; position: sticky; top: 0; background: var(--bg-2); z-index: 1; }
+.sidebar-toolbar .input { flex: 1; min-width: 0; }

@@ -23,6 +23,7 @@ export function ConfigView({
   const [port, setPort] = useState(settings.port ? String(settings.port) : '')
   const [jvmArgs, setJvmArgs] = useState(settings.jvmArgs ?? '')
   const [extraArgs, setExtraArgs] = useState(settings.extraArgs ?? '')
+  const [mavenRepoLocal, setMavenRepoLocal] = useState(settings.mavenRepoLocal ?? '')
   const [debugPort, setDebugPort] = useState(settings.debugPort ? String(settings.debugPort) : '')
   const [swaggerPath, setSwaggerPath] = useState(settings.swaggerPath ?? '')
   const [env, setEnv] = useState(envToText(settings.env))
@@ -36,6 +37,7 @@ export function ConfigView({
         port: parseInt(port, 10) || undefined,
         jvmArgs: jvmArgs.trim() || undefined,
         extraArgs: extraArgs.trim() || undefined,
+        mavenRepoLocal: mavenRepoLocal.trim() || undefined,
         debugPort: parseInt(debugPort, 10) || undefined,
         swaggerPath: swaggerPath.trim() || undefined,
         env: textToEnv(env)
@@ -107,6 +109,10 @@ export function ConfigView({
               </label>
             </>
           )}
+          <label>
+            Repositório local do Maven só para este serviço (-Dmaven.repo.local)
+            <input className="input mono" value={mavenRepoLocal} onChange={(e) => setMavenRepoLocal(e.target.value)} placeholder="vazio = o das Definições" />
+          </label>
           <label>
             Argumentos Maven extra
             <input className="input mono" value={extraArgs} onChange={(e) => setExtraArgs(e.target.value)} placeholder="-Dmaven.test.skip=true -P local" />

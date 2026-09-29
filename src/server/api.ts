@@ -52,6 +52,16 @@ function mavenCommand(svc: ServiceInfo, settings: AppSettings): string {
   return settings.mavenCommand || 'mvn'
 }
 
+/** Argumentos comuns a todas as invocações do Maven: settings.xml e repositório local (por serviço ou global). */
+function mavenGlobalArgs(settings: AppSettings, ss?: ServiceSettings): string[] {
+  const args: string[] = []
+  const settingsFile = settings.mavenSettingsFile?.trim()
+  if (settingsFile) args.push('-s', quote(settingsFile))
+  const repo = ss?.mavenRepoLocal?.trim() || settings.mavenRepoLocal?.trim()
+  if (repo) args.push(quote(`-Dmaven.repo.local=${repo}`))
+  return args
+}
+
 function defaultDebugPort(svcId: string, settings: AppSettings): number {
   const boots = lastScan?.services.filter((s) => s.kind === 'spring-boot') ?? []
   return settings.baseDebugPort + Math.max(0, boots.findIndex((s) => s.id === svcId))
@@ -82,7 +92,7 @@ function startService(id: string, mode: StartMode): ProcState {
   } else throw new Error(`Modo inválido: ${String(mode)}`)
   if (ss.extraArgs?.trim()) args.push(ss.extraArgs.trim())
 
-  const mvn = quote(mavenCommand(svc, settings))
+  const mvn = [quote(mavenCommand(svc, settings)), ...mavenGlobalArgs(settings, ss)].join(' ')
   let commandLine = [mvn, ...args].join(' ')
   if ((mode === 'run' || mode === 'debug') && svc.runModule) {
     // Multi-módulo: instala os módulos de que o executável depende e corre só esse (spring-boot:run não aceita -am)
@@ -432,7 +442,7 @@ apiRouter.post('/services/:id/deps/tree', h((req) => {
   const procId = `deps:${svc.id}`
   if (pm.isActive(procId)) return pm.getState(procId)
   pm.clearLogs(procId)
-  return pm.start({ id: procId, commandLine: [quote(mavenCommand(svc, settings)), ...depsCommandArgs()].join(' '), cwd: svc.path, env: buildEnv(settings), mode: 'build' })
+  return pm.start({ id: procId, commandLine: [quote(mavenCommand(svc, settings)), ...mavenGlobalArgs(settings, settings.services[svc.id]), ...depsCommandArgs()].join(' '), cwd: svc.path, env: buildEnv(settings), mode: 'build' })
 }))
 
 // ---- Git por serviço ----

@@ -31,6 +31,8 @@ export function SettingsView({
       javaHome: form.javaHome?.trim() || undefined,
       mavenCommand: form.mavenCommand.trim() || 'mvn',
       preferWrapper: form.preferWrapper,
+      mavenRepoLocal: form.mavenRepoLocal?.trim() || undefined,
+      mavenSettingsFile: form.mavenSettingsFile?.trim() || undefined,
       baseDebugPort: Number(form.baseDebugPort) || 5005,
       containerCommand: form.containerCommand?.trim() || undefined,
       keycloak: {
@@ -92,6 +94,17 @@ export function SettingsView({
               </label>
               <label className="check">
                 <input type="checkbox" checked={form.preferWrapper} onChange={(e) => set('preferWrapper', e.target.checked)} /> Preferir mvnw.cmd do projeto quando existir
+              </label>
+              <label>
+                Repositório local do Maven (-Dmaven.repo.local) — onde ficam as dependências descarregadas
+                <div className="row">
+                  <input className="input mono grow" value={form.mavenRepoLocal ?? ''} onChange={(e) => set('mavenRepoLocal', e.target.value)} placeholder="vazio = ~/.m2/repository (C:\Users\tu\.m2\repository)" />
+                  <button className="btn" onClick={() => pick(form.mavenRepoLocal, (d) => set('mavenRepoLocal', d))}>Escolher…</button>
+                </div>
+              </label>
+              <label>
+                settings.xml do Maven (-s) — mirrors/Nexus, proxy, credenciais
+                <input className="input mono" value={form.mavenSettingsFile ?? ''} onChange={(e) => set('mavenSettingsFile', e.target.value)} placeholder="vazio = ~/.m2/settings.xml (C:\Users\tu\.m2\settings.xml)" />
               </label>
               <label>
                 Comando de containers (separador Containers)
