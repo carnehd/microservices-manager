@@ -61,11 +61,19 @@ export function KeycloakView({
   const [restartAfter, setRestartAfter] = useState(true)
   const [jars, setJars] = useState<Record<string, JarInfo>>({})
   const [chosenJar, setChosenJar] = useState<Record<string, string>>({})
+  const [loadedIds, setLoadedIds] = useState<Set<string> | null>(null)
 
   const refreshJars = useCallback(async () => {
     const out: Record<string, JarInfo> = {}
     await Promise.all(spis.map(async (s) => { out[s.id] = await api.jarInfo(s.id).catch(() => ({ candidates: [], installed: [] })) }))
     setJars(out)
+    // ids de providers efetivamente carregados no Keycloak (serverinfo); null se não der para consultar
+    try {
+      const provs = await api.kcAdmin.providers()
+      setLoadedIds(new Set(provs.flatMap((p) => p.providers)))
+    } catch {
+      setLoadedIds(null)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scan])
   useEffect(() => {
@@ -187,8 +195,19 @@ export function KeycloakView({
                 return (
                   <div className="row spi-row" key={s.id}>
                     <div className="grow">
-                      <div>{s.name} <span className="muted small mono">{s.relativePath}</span></div>
-                      <div className="muted small mono">{s.spiProviders.map((p) => p.split('.').pop()).join(', ') || 'sem META-INF/services'}</div>
+                      <div>
+                        {s.name} <span className="muted small mono">{s.relativePath}</span>
+                        {(() => {
+                          const ids = s.providerIds ?? []
+                          if (!ids.length) return null
+                          if (loadedIds === null) return <span className="muted small"> · estado desconhecido (liga a Administração)</span>
+                          const loaded = ids.filter((id) => loadedIds.has(id))
+                          if (loaded.length) return <Badge tone="green" title={`carregado no Keycloak: ${loaded.join(', ')}`}>✓ carregado</Badge>
+                          if (j.installed.length) return <Badge tone="amber" title={`jar em providers/ mas ${ids.join(', ')} não aparece no serverinfo — reinicia o Keycloak`}>instalado, não carregado</Badge>
+                          return <Badge tone="muted" title={ids.join(', ')}>não instalado</Badge>
+                        })()}
+                      </div>
+                      <div className="muted small mono">{s.spiProviders.map((p) => p.split('.').pop()).join(', ') || 'sem META-INF/services'}{s.providerIds?.length ? ` · id: ${s.providerIds.join(', ')}` : ''}</div>
                       <div className="small">
                         <span className="muted">instalado: </span>
                         {j.installed.length ? j.installed.map((i) => (

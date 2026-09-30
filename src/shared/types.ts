@@ -31,6 +31,8 @@ export interface ServiceInfo {
   profiles: string[]
   /** Ficheiros META-INF/services (SPIs Keycloak) */
   spiProviders: string[]
+  /** IDs de provider declarados no código do SPI (getId()/ID = "...") — para confirmar se estão carregados */
+  providerIds?: string[]
   /** Jar mais recente em target/ (se existir) */
   jarPath?: string
   configFiles: string[]

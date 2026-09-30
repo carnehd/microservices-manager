@@ -135,6 +135,9 @@ reiniciar, **Recriar container** (aplica mudanças de imagem/pastas/porta — os
 
 - **Providers / SPIs**: lista da pasta de providers (da distribuição ou a montada no container), remover; para cada
   projeto SPI detetado, **Build & instalar** (`mvn package` + copiar o jar), ou **Instalar todos e reiniciar**.
+  Cada projeto SPI mostra um estado — **✓ carregado** (o id do provider aparece no `/admin/serverinfo`),
+  **instalado, não carregado** (jar em providers/ mas ainda sem reinício) ou **não instalado** — cruzando os
+  ids extraídos do código (`getId()`/`ID = "…"`) com os providers efetivamente carregados no Keycloak.
 - **Administração** (Admin REST API, sem abrir a consola):
   - **Realms**: criar (vazio, **copiar de um realm existente** ou importar de ficheiro), criar vários de uma vez
     (`local, dev, sit`), ativar/desativar **registo de utilizadores**, exportar para JSON (`keycloak-realms/`

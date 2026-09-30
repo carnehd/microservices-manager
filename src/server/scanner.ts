@@ -83,6 +83,7 @@ export async function scanFolder(root: string): Promise<ScanResult> {
   await Promise.all(services.map(async (svc) => {
     svc.openApiFiles = await findOpenApiFiles(svc.path)
     svc.brunoCollections = await findCollectionDirs(svc.path)
+    if (svc.kind === 'keycloak-spi') svc.providerIds = await findProviderIds(svc.moduleDir ?? svc.path)
   }))
   // Inferir dependências: um endpoint referido na config que aponta para a porta/host de outro serviço
   for (const svc of services) {
@@ -291,6 +292,40 @@ async function hasSpringBootApplication(dir: string): Promise<boolean> {
   }
   for (const src of ['java', 'kotlin']) if (await search(join(dir, 'src', 'main', src))) return true
   return false
+}
+
+/** Extrai IDs de provider do código Java do SPI: getId() a devolver literal, ou ID = "…". */
+async function findProviderIds(root: string): Promise<string[]> {
+  const ids = new Set<string>()
+  let budget = 600
+  async function walk(dir: string, depth: number): Promise<void> {
+    if (depth > 6 || budget <= 0) return
+    let entries: import('fs').Dirent[]
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (budget <= 0) return
+      if (e.isDirectory()) {
+        if (!e.name.startsWith('.') && e.name !== 'target') await walk(join(dir, e.name), depth + 1)
+        continue
+      }
+      if (!e.name.endsWith('.java') && !e.name.endsWith('.kt')) continue
+      budget--
+      let text: string
+      try {
+        text = await fs.readFile(join(dir, e.name), 'utf8')
+      } catch {
+        continue
+      }
+      for (const m of text.matchAll(/getId\s*\(\s*\)\s*(?::\s*String\s*)?\{?\s*(?:return|=>)\s*"([^"]+)"/g)) ids.add(m[1])
+      for (const m of text.matchAll(/\bID\s*(?::\s*String)?\s*=\s*"([^"]+)"/g)) ids.add(m[1])
+    }
+  }
+  await walk(join(root, 'src', 'main'), 0)
+  return [...ids].sort()
 }
 
 const OPENAPI_SKIP = new Set(['target', 'build', 'dist', 'out', 'node_modules', '.git', '.idea', '.mvn'])
