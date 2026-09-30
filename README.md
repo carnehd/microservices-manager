@@ -18,7 +18,7 @@ Substituir a dúzia de terminais, scripts e consolas que um programador abre par
 - ver o **mapa de dependências** entre os microserviços.
 
 Corre como um pequeno servidor Node na própria máquina (Windows, macOS ou Linux); a interface abre no
-browser. Não precisa de instalação nem de permissões de administrador.
+browser, com tema **claro ou escuro** (interruptor na barra de topo, guardado no browser). Não precisa de instalação nem de permissões de administrador.
 
 ---
 

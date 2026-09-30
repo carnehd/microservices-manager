@@ -24,6 +24,21 @@ export default function App() {
   const [view, setView] = useState<View>('services')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      return localStorage.getItem('msm.theme') === 'light' ? 'light' : 'dark'
+    } catch {
+      return 'dark'
+    }
+  })
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    try {
+      localStorage.setItem('msm.theme', theme)
+    } catch {
+      /* localStorage indisponível */
+    }
+  }, [theme])
   const [gitSummary, setGitSummary] = useState<GitSummary>({})
   const [toast, setToast] = useState<ToastMsg | null>(null)
   const [picker, setPicker] = useState<{ initial?: string; resolve: (dir: string | null) => void } | null>(null)
@@ -175,6 +190,9 @@ export default function App() {
           <button className={view === 'diagnostics' ? 'active' : ''} onClick={() => setView('diagnostics')}>Diagnóstico</button>
         </nav>
         <span className="grow" />
+        <button className="btn btn-sm btn-ghost" title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
         <button className="btn btn-ghost mono small ellipsis root-path" title="Escolher pasta raiz" onClick={pickRoot}>
           {settings.rootFolder ?? 'Escolher pasta…'}
         </button>
