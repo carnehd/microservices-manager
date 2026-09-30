@@ -322,3 +322,6 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 .chips-list .chip { cursor: pointer; }
 .chip-sel { border-color: var(--accent); color: var(--accent); }
 .sql-error { border-color: var(--red); color: #ff9b9b; }
+.switch.small { height: 26px; padding: 0 2px; }
+.switch.small .switch-label { font-size: 12px; }
+.svc-kc { font-size: 9px; font-weight: 700; color: var(--green); border: 1px solid rgba(62,201,123,.5); border-radius: 8px; padding: 0 5px; margin-left: 6px; vertical-align: middle; }

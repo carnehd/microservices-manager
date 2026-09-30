@@ -40,6 +40,7 @@ export default function App() {
     }
   }, [theme])
   const [gitSummary, setGitSummary] = useState<GitSummary>({})
+  const [kcProviders, setKcProviders] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<ToastMsg | null>(null)
   const [picker, setPicker] = useState<{ initial?: string; resolve: (dir: string | null) => void } | null>(null)
   const logs = useLogs()
@@ -96,12 +97,26 @@ export default function App() {
       /* sem git: fica vazio */
     }
   }, [])
+  const refreshKcProviders = useCallback(async () => {
+    try {
+      const p = await api.kcAdmin.providers()
+      setKcProviders(new Set(p.flatMap((x) => x.providers)))
+    } catch {
+      setKcProviders(new Set()) // Keycloak parado / admin não acessível
+    }
+  }, [])
   useEffect(() => {
     if (!scan) return
     void refreshGit()
     const t = setInterval(() => void refreshGit(), 15_000)
     return () => clearInterval(t)
   }, [scan, refreshGit])
+  useEffect(() => {
+    if (!scan) return
+    void refreshKcProviders()
+    const t = setInterval(() => void refreshKcProviders(), 15_000)
+    return () => clearInterval(t)
+  }, [scan, states.keycloak?.status, refreshKcProviders])
 
   const saveSettings = useCallback(async (patch: Partial<AppSettings>): Promise<AppSettings | null> => {
     try {
@@ -206,7 +221,7 @@ export default function App() {
       <div className="body">
         {view === 'services' && (
           <>
-            <Sidebar scan={scan} states={states} gitSummary={gitSummary} selectedId={selectedId} onSelect={setSelectedId} />
+            <Sidebar scan={scan} states={states} gitSummary={gitSummary} kcProviders={kcProviders} selectedId={selectedId} onSelect={setSelectedId} />
             {selected ? (
               <ServiceView
                 key={selected.id}

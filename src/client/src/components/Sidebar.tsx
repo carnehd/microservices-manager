@@ -9,8 +9,8 @@ const GROUPS: Array<{ kind: ServiceKind; title: string }> = [
 ]
 
 export function Sidebar({
-  scan, states, gitSummary, selectedId, onSelect
-}: { scan: ScanResult | null; states: Record<string, ProcState>; gitSummary: GitSummary; selectedId: string | null; onSelect: (id: string) => void }) {
+  scan, states, gitSummary, kcProviders, selectedId, onSelect
+}: { scan: ScanResult | null; states: Record<string, ProcState>; gitSummary: GitSummary; kcProviders: Set<string>; selectedId: string | null; onSelect: (id: string) => void }) {
   const [query, setQuery] = useState('')
   const [asc, setAsc] = useState(true)
 
@@ -32,7 +32,7 @@ export function Sidebar({
         return (
           <section key={kind}>
             <h3>{title} <span className="muted">{items.length}</span></h3>
-            {items.map((s) => <Row key={s.id} svc={s} state={states[s.id]} git={gitSummary[s.id]} selected={s.id === selectedId} onClick={() => onSelect(s.id)} />)}
+            {items.map((s) => <Row key={s.id} svc={s} state={states[s.id]} git={gitSummary[s.id]} kcProviders={kcProviders} selected={s.id === selectedId} onClick={() => onSelect(s.id)} />)}
           </section>
         )
       })}
@@ -42,13 +42,14 @@ export function Sidebar({
   )
 }
 
-function Row({ svc, state, git, selected, onClick }: { svc: ServiceInfo; state?: ProcState; git?: GitSummary[string]; selected: boolean; onClick: () => void }) {
+function Row({ svc, state, git, kcProviders, selected, onClick }: { svc: ServiceInfo; state?: ProcState; git?: GitSummary[string]; kcProviders: Set<string>; selected: boolean; onClick: () => void }) {
   const n = git?.changes ?? 0
+  const spiLoaded = svc.kind === 'keycloak-spi' && (svc.providerIds?.length ?? 0) > 0 && svc.providerIds!.some((id) => kcProviders.has(id))
   return (
     <button className={`svc-row${selected ? ' selected' : ''}`} onClick={onClick} title={svc.relativePath}>
       <StatusDot status={state?.status} />
       <span className="svc-text">
-        <span className="svc-name ellipsis">{svc.name}</span>
+        <span className="svc-name ellipsis">{svc.name}{spiLoaded && <span className="svc-kc" title="carregado no Keycloak">KC</span>}</span>
         {git && (
           <span className="svc-sub ellipsis">
             <span className="svc-branch" title={`branch atual: ${git.branch ?? '?'}`}>⎇ {git.branch ?? '?'}</span>

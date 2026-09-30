@@ -6,12 +6,13 @@ import { ConfigView } from './ConfigView'
 import { EndpointsView } from './EndpointsView'
 import { BrunoView } from './BrunoView'
 import { EnvsView } from './EnvsView'
+import { JarsView } from './JarsView'
 import { GitView } from './GitView'
 import { DepsView } from './DepsView'
 import { LogView } from './LogView'
 import { Badge, StatusPill, isActive } from './common'
 
-type Tab = 'logs' | 'endpoints' | 'bruno' | 'envs' | 'deps' | 'git' | 'config'
+type Tab = 'logs' | 'endpoints' | 'bruno' | 'envs' | 'jars' | 'deps' | 'git' | 'config'
 
 export function ServiceView({
   svc, state, states, settings, logs, onStart, onStartWithDeps, onStop, onSaveServiceSettings, onSettingsChanged, onGitChanged, notify, fail
@@ -128,6 +129,7 @@ export function ServiceView({
         <button className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>Logs</button>
         {svc.kind === 'spring-boot' && <button className={tab === 'endpoints' ? 'active' : ''} onClick={() => setTab('endpoints')}>Endpoints</button>}
         {(svc.brunoCollections?.length ?? 0) > 0 && <button className={tab === 'bruno' ? 'active' : ''} onClick={() => setTab('bruno')}>Bruno<span className="count">{svc.brunoCollections!.length}</span></button>}
+        {svc.kind === 'keycloak-spi' && <button className={tab === 'jars' ? 'active' : ''} onClick={() => setTab('jars')}>Jars</button>}
         {svc.kind === 'spring-boot' && <button className={tab === 'envs' ? 'active' : ''} onClick={() => setTab('envs')}>Ambientes{svc.profiles.length ? <span className="count">{svc.profiles.length}</span> : null}</button>}
         <button className={tab === 'deps' ? 'active' : ''} onClick={() => setTab('deps')}>Dependências</button>
         <button className={tab === 'git' ? 'active' : ''} onClick={() => setTab('git')}>Git</button>
@@ -138,6 +140,7 @@ export function ServiceView({
         {tab === 'logs' && <LogView lines={logs.get(svc.id)} version={logs.version} onClear={() => logs.clear(svc.id)} />}
         {tab === 'endpoints' && <EndpointsView svc={svc} baseUrl={baseUrl} running={running} kcPort={settings.keycloak.httpPort} notify={notify} />}
         {tab === 'bruno' && <BrunoView svc={svc} notify={notify} fail={fail} />}
+        {tab === 'jars' && <JarsView svc={svc} notify={notify} fail={fail} />}
         {tab === 'envs' && <EnvsView svc={svc} settings={ss} notify={notify} fail={fail} onChanged={onSettingsChanged} onSetProfile={(p) => onSaveServiceSettings(svc.id, { ...ss, profile: p }, true)} />}
         {tab === 'deps' && <DepsView svc={svc} logs={logs} states={states} fail={fail} />}
         {tab === 'git' && <GitView svc={svc} notify={notify} fail={fail} onChanged={onGitChanged} />}
