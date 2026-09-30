@@ -45,6 +45,10 @@ só desativa a funcionalidade correspondente.
 Manualmente: `npm install`, `npm run build`, `npm start`. Porta alternativa: `set MSM_PORT=4000` antes do
 `npm start`. Se a app já estiver a correr noutra janela, um segundo `npm start` limita-se a abrir o browser nela.
 
+**Atualizar depois de um `git pull`**: o build compilado (`dist/`) **não vem no git**, por isso corre `npm run build`
+(ou o `start.cmd`, que já compila sempre) e reinicia o servidor. Se a página ainda mostrar a versão antiga, faz um
+*hard refresh* no browser (Ctrl+F5). O `npm start` sozinho **não** recompila — serve o `dist/` que existir.
+
 ### macOS / Linux
 
 ```bash
