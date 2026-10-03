@@ -12,10 +12,10 @@ async function git(cwd: string, args: string[], opts: { okCodes?: number[]; time
     return stdout
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string; code?: number | string }
-    if (err.code === 'ENOENT') throw new Error('"git" não encontrado no PATH — instala o Git (https://git-scm.com)')
+    if (err.code === 'ENOENT') throw new Error('"git" not found in PATH — install Git (https://git-scm.com)')
     if (typeof err.code === 'number' && opts.okCodes?.includes(err.code)) return err.stdout ?? ''
     const msg = (err.stderr || err.stdout || err.message || '').trim().split('\n').filter((l) => l && !l.startsWith('hint:')).join(' · ')
-    throw new Error(msg || 'erro git desconhecido')
+    throw new Error(msg || 'unknown git error')
   }
 }
 
@@ -26,7 +26,7 @@ async function repoOf(svc: ServiceInfo): Promise<{ root: string; prefix: string 
     const prefix = relative(root, svc.path).split(sep).join('/')
     return { root, prefix }
   } catch (e) {
-    if (e instanceof Error && e.message.includes('não encontrado')) throw e
+    if (e instanceof Error && e.message.includes('not found')) throw e
     return null
   }
 }
@@ -109,7 +109,7 @@ export async function gitInfo(svc: ServiceInfo): Promise<GitInfo> {
 
 export async function branches(svc: ServiceInfo): Promise<GitBranch[]> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   const fmt = `%(refname)${US}%(refname:short)${US}%(HEAD)${US}%(upstream:short)${US}%(committerdate:relative)${US}%(subject)`
   const out = await git(repo.root, ['for-each-ref', `--format=${fmt}`, '--sort=-committerdate', 'refs/heads', 'refs/remotes'])
   const list: GitBranch[] = []
@@ -123,7 +123,7 @@ export async function branches(svc: ServiceInfo): Promise<GitBranch[]> {
 
 export async function log(svc: ServiceInfo, max = 30): Promise<GitCommit[]> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   const out = await git(repo.root, ['log', `-${max}`, `--format=%h${US}%an${US}%ar${US}%s${US}%D`, ...scope(repo.prefix)], { okCodes: [128] })
   return out.split('\n').filter(Boolean).map((l) => {
     const [hash, author, when, subject, refs] = l.split(US)
@@ -133,35 +133,35 @@ export async function log(svc: ServiceInfo, max = 30): Promise<GitCommit[]> {
 
 export async function diff(svc: ServiceInfo, repoPath: string, staged: boolean, untracked: boolean): Promise<string> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   let out: string
   if (untracked) out = await git(repo.root, ['diff', '--no-index', '--', '/dev/null', repoPath], { okCodes: [1] })
   else out = await git(repo.root, ['diff', ...(staged ? ['--cached'] : []), '--', repoPath])
   const MAX = 300_000
-  return out.length > MAX ? out.slice(0, MAX) + '\n… (diff truncado)' : out
+  return out.length > MAX ? out.slice(0, MAX) + '\n… (diff truncated)' : out
 }
 
 async function validBranch(root: string, name: string): Promise<string> {
   const n = name.trim()
-  if (!n) throw new Error('Nome da branch obrigatório')
+  if (!n) throw new Error('Branch name required')
   await git(root, ['check-ref-format', '--branch', n]).catch(() => {
-    throw new Error(`Nome de branch inválido: ${n}`)
+    throw new Error(`Invalid branch name: ${n}`)
   })
   return n
 }
 
 export async function createBranch(svc: ServiceInfo, name: string, from?: string): Promise<string> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   const n = await validBranch(repo.root, name)
   return git(repo.root, ['checkout', '-b', n, ...(from?.trim() ? [from.trim()] : [])])
 }
 
 export async function checkout(svc: ServiceInfo, name: string): Promise<string> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   const n = name.trim()
-  if (!n) throw new Error('Branch obrigatória')
+  if (!n) throw new Error('Branch required')
   // "origin/x" → cria a branch local x a seguir a origin/x
   if (/^(origin|upstream)\//.test(n)) return git(repo.root, ['checkout', '--track', n])
   return git(repo.root, ['checkout', n])
@@ -169,14 +169,14 @@ export async function checkout(svc: ServiceInfo, name: string): Promise<string> 
 
 export async function stage(svc: ServiceInfo, repoPaths: string[]): Promise<void> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   if (!repoPaths.length) return
   await git(repo.root, ['add', '-A', '--', ...repoPaths])
 }
 
 export async function unstage(svc: ServiceInfo, repoPaths: string[]): Promise<void> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   if (!repoPaths.length) return
   await git(repo.root, ['restore', '--staged', '--', ...repoPaths])
 }
@@ -184,7 +184,7 @@ export async function unstage(svc: ServiceInfo, repoPaths: string[]): Promise<vo
 /** Descarta alterações: ficheiros seguidos voltam ao HEAD, não seguidos são apagados. */
 export async function discard(svc: ServiceInfo, changes: Array<{ repoPath: string; untracked: boolean }>): Promise<void> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   const tracked = changes.filter((c) => !c.untracked).map((c) => c.repoPath)
   const untracked = changes.filter((c) => c.untracked).map((c) => c.repoPath)
   if (tracked.length) await git(repo.root, ['restore', '--staged', '--worktree', '--', ...tracked])
@@ -193,33 +193,33 @@ export async function discard(svc: ServiceInfo, changes: Array<{ repoPath: strin
 
 export async function commit(svc: ServiceInfo, message: string, stageAll: boolean): Promise<string> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
-  if (!message.trim()) throw new Error('Mensagem de commit obrigatória')
+  if (!repo) throw new Error('Not a git repository')
+  if (!message.trim()) throw new Error('Commit message required')
   if (stageAll) await git(repo.root, ['add', '-A', ...scope(repo.prefix)])
   return git(repo.root, ['commit', '-m', message.trim()])
 }
 
 export async function fetch(svc: ServiceInfo): Promise<string> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   return git(repo.root, ['fetch', '--prune'], { timeoutMs: 120_000 })
 }
 
 export async function pull(svc: ServiceInfo): Promise<string> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   return git(repo.root, ['pull', '--ff-only'], { timeoutMs: 120_000 })
 }
 
 export async function push(svc: ServiceInfo): Promise<string> {
   const repo = await repoOf(svc)
-  if (!repo) throw new Error('Não é um repositório git')
+  if (!repo) throw new Error('Not a git repository')
   const info = await gitInfo(svc)
-  if (info.detached || !info.branch) throw new Error('HEAD desligado (detached): muda para uma branch antes de fazer push')
+  if (info.detached || !info.branch) throw new Error('Detached HEAD: switch to a branch before pushing')
   const args = info.upstream ? ['push'] : ['push', '-u', 'origin', info.branch]
   // O git escreve o resumo do push em stderr; com sucesso devolvemos algo legível
   const out = await git(repo.root, args, { timeoutMs: 180_000 })
-  return out.trim() || `push de ${info.branch} feito`
+  return out.trim() || `pushed ${info.branch}`
 }
 
 /** Só o essencial para a barra lateral: branch e nº de alterações (1 status por repositório). */

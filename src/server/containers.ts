@@ -1,6 +1,6 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import type { ContainerInfo, EngineInfo, ImageInfo, MachineInfo } from '../shared/types'
+import type { ContainerExecResult, ContainerInfo, EngineInfo, ImageInfo, MachineInfo } from '../shared/types'
 
 const execFileP = promisify(execFile)
 
@@ -11,9 +11,37 @@ async function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<str
     return stdout
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string }
-    if (err.code === 'ENOENT') throw new Error(`"${cmd}" não encontrado no PATH — instala o Podman (ou define outro comando nas Definições)`)
-    const msg = (err.stderr || err.stdout || err.message || '').trim().split('\n').filter(Boolean).pop() ?? 'erro desconhecido'
+    if (err.code === 'ENOENT') throw new Error(`"${cmd}" not found in PATH — install Podman (or set another command in Settings)`)
+    const msg = (err.stderr || err.stdout || err.message || '').trim().split('\n').filter(Boolean).pop() ?? 'unknown error'
     throw new Error(msg)
+  }
+}
+
+// Subcomandos de leitura/diagnóstico permitidos na consola da página Containers (sem destruir nada).
+const EXEC_ALLOWED = new Set(['machine', 'info', 'version', 'ps', 'images', 'image', 'stats', 'system', 'volume', 'network', 'port', 'top', 'inspect', 'healthcheck', 'df'])
+const EXEC_ARG_RE = /^[\w.@:/=+,%-]+$/
+
+/** Corre um comando de leitura do motor (consola): devolve stdout/stderr/código, sem lançar em erro de execução. */
+export async function execContainerCommand(cmd: string, args: string[]): Promise<ContainerExecResult> {
+  const clean = args.map((a) => String(a)).filter((a) => a.length)
+  if (!clean.length) throw new Error('No command given')
+  if (!EXEC_ALLOWED.has(clean[0])) throw new Error(`Command "${clean[0]}" is not allowed in the console (read-only commands only)`)
+  for (const a of clean) if (!EXEC_ARG_RE.test(a)) throw new Error(`Invalid argument: ${a}`)
+  const command = `${cmd} ${clean.join(' ')}`
+  const start = Date.now()
+  try {
+    const { stdout, stderr } = await execFileP(cmd, clean, { timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true })
+    return { command, stdout, stderr, code: 0, ms: Date.now() - start }
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string; code?: unknown }
+    if (err.code === 'ENOENT') throw new Error(`"${cmd}" not found in PATH — install Podman (or set another command in Settings)`)
+    return {
+      command,
+      stdout: err.stdout ?? '',
+      stderr: err.stderr || err.message || 'command failed',
+      code: typeof err.code === 'number' ? err.code : 1,
+      ms: Date.now() - start
+    }
   }
 }
 
@@ -73,7 +101,7 @@ export async function engineInfo(cmd: string): Promise<EngineInfo> {
     info.serverVersion = v?.Server?.Version ?? v?.Server?.Engine?.Version
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    if (msg.includes('não encontrado')) {
+    if (msg.includes('not found')) {
       info.error = msg
       return info
     }
@@ -143,18 +171,18 @@ export async function listImages(cmd: string): Promise<ImageInfo[]> {
 export type ContainerAction = 'start' | 'stop' | 'restart' | 'remove' | 'pause' | 'unpause'
 
 export async function containerAction(cmd: string, action: ContainerAction, id: string, force = false): Promise<string> {
-  if (!/^[\w.-]+$/.test(id)) throw new Error('Identificador inválido')
+  if (!/^[\w.-]+$/.test(id)) throw new Error('Invalid identifier')
   const args = action === 'remove' ? ['rm', ...(force ? ['-f'] : []), id] : [action, id]
   return (await run(cmd, args, 120_000)).trim()
 }
 
 export async function removeImage(cmd: string, id: string, force = false): Promise<string> {
-  if (!/^[\w.:/@-]+$/.test(id)) throw new Error('Identificador inválido')
+  if (!/^[\w.:/@-]+$/.test(id)) throw new Error('Invalid identifier')
   return (await run(cmd, ['rmi', ...(force ? ['-f'] : []), id], 120_000)).trim()
 }
 
 export async function machineAction(cmd: string, action: 'start' | 'stop', name: string): Promise<string> {
-  if (!/^[\w.-]*$/.test(name)) throw new Error('Nome de máquina inválido')
+  if (!/^[\w.-]*$/.test(name)) throw new Error('Invalid machine name')
   return (await run(cmd, ['machine', action, ...(name ? [name] : [])], 300_000)).trim()
 }
 
@@ -187,19 +215,19 @@ export async function waitForState(cmd: string, name: string, states: string[], 
 }
 
 export async function ensureContainer(cmd: string, opts: RunOptions): Promise<string> {
-  if (!/^[\w.-]+$/.test(opts.name)) throw new Error('Nome de container inválido')
+  if (!/^[\w.-]+$/.test(opts.name)) throw new Error('Invalid container name')
   const existing = (await listContainers(cmd)).find((c) => c.name === opts.name)
   if (existing && opts.recreate) {
     await run(cmd, ['rm', '-f', opts.name], 60_000)
     await waitForState(cmd, opts.name, [], 10_000) // até desaparecer
-  } else if (existing?.state === 'running') return `${opts.name} já está a correr`
+  } else if (existing?.state === 'running') return `${opts.name} is already running`
   else if (existing) {
     await waitForState(cmd, opts.name, ['exited', 'stopped', 'created', 'configured'])
     let lastErr: unknown
     for (let i = 0; i < 5; i++) {
       try {
         await run(cmd, ['start', opts.name], 60_000)
-        return `${opts.name} iniciado`
+        return `${opts.name} started`
       } catch (e) {
         lastErr = e
         if (!/state improper|stopping/i.test(String(e))) throw e
@@ -215,7 +243,7 @@ export async function ensureContainer(cmd: string, opts: RunOptions): Promise<st
   args.push(opts.image, ...(opts.args ?? []))
   // A primeira vez faz pull da imagem (pode demorar minutos)
   const id = (await run(cmd, args, 900_000)).trim()
-  return `${opts.name} criado a partir de ${opts.image} (${id.slice(0, 12)})`
+  return `${opts.name} created from ${opts.image} (${id.slice(0, 12)})`
 }
 
 export async function containerState(cmd: string, name: string): Promise<{ exists: boolean; running: boolean }> {

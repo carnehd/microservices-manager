@@ -64,24 +64,24 @@ export function SettingsView({
       }
     })
     if (saved) {
-      notify('Definições guardadas', 'success')
+      notify('Settings saved', 'success')
       if (rootChanged && saved.rootFolder) onRescan()
     }
   }
 
   return (
     <main className="service">
-      <div className="svc-header"><h2>Definições</h2></div>
+      <div className="svc-header"><h2>Settings</h2></div>
       <div className="tab-body">
         <div className="config">
           <section>
-            <h3>Pasta raiz</h3>
+            <h3>Root folder</h3>
             <div className="form">
               <label>
-                Pasta raiz dos microserviços
+                Microservices root folder
                 <div className="row">
-                  <input className="input mono grow" value={form.rootFolder ?? ''} onChange={(e) => set('rootFolder', e.target.value)} placeholder="C:\projetos\microservicos" />
-                  <button className="btn" onClick={() => pick(form.rootFolder, (d) => set('rootFolder', d))}>Escolher…</button>
+                  <input className="input mono grow" value={form.rootFolder ?? ''} onChange={(e) => set('rootFolder', e.target.value)} placeholder="C:\projects\microservices" />
+                  <button className="btn" onClick={() => pick(form.rootFolder, (d) => set('rootFolder', d))}>Choose…</button>
                 </div>
               </label>
             </div>
@@ -91,36 +91,36 @@ export function SettingsView({
             <h3>Java / Maven</h3>
             <div className="form">
               <label>
-                JAVA_HOME (vazio = o do sistema)
+                JAVA_HOME (empty = system default)
                 <div className="row">
                   <input className="input mono grow" value={form.javaHome ?? ''} onChange={(e) => set('javaHome', e.target.value)} placeholder="C:\Program Files\Java\jdk-21" />
-                  <button className="btn" onClick={() => pick(form.javaHome, (d) => set('javaHome', d))}>Escolher…</button>
+                  <button className="btn" onClick={() => pick(form.javaHome, (d) => set('javaHome', d))}>Choose…</button>
                 </div>
               </label>
               <label>
-                Comando Maven (quando não há wrapper)
+                Maven command (when there is no wrapper)
                 <input className="input mono" value={form.mavenCommand} onChange={(e) => set('mavenCommand', e.target.value)} placeholder="mvn" />
               </label>
               <label className="check">
-                <input type="checkbox" checked={form.preferWrapper} onChange={(e) => set('preferWrapper', e.target.checked)} /> Preferir mvnw.cmd do projeto quando existir
+                <input type="checkbox" checked={form.preferWrapper} onChange={(e) => set('preferWrapper', e.target.checked)} /> Prefer the project's mvnw.cmd when present
               </label>
               <label>
-                Repositório local do Maven (-Dmaven.repo.local) — onde ficam as dependências descarregadas
+                Local Maven repository (-Dmaven.repo.local) — where downloaded dependencies are stored
                 <div className="row">
-                  <input className="input mono grow" value={form.mavenRepoLocal ?? ''} onChange={(e) => set('mavenRepoLocal', e.target.value)} placeholder="vazio = ~/.m2/repository (C:\Users\tu\.m2\repository)" />
-                  <button className="btn" onClick={() => pick(form.mavenRepoLocal, (d) => set('mavenRepoLocal', d))}>Escolher…</button>
+                  <input className="input mono grow" value={form.mavenRepoLocal ?? ''} onChange={(e) => set('mavenRepoLocal', e.target.value)} placeholder="empty = ~/.m2/repository (C:\Users\you\.m2\repository)" />
+                  <button className="btn" onClick={() => pick(form.mavenRepoLocal, (d) => set('mavenRepoLocal', d))}>Choose…</button>
                 </div>
               </label>
               <label>
-                settings.xml do Maven (-s) — mirrors/Nexus, proxy, credenciais
-                <input className="input mono" value={form.mavenSettingsFile ?? ''} onChange={(e) => set('mavenSettingsFile', e.target.value)} placeholder="vazio = ~/.m2/settings.xml (C:\Users\tu\.m2\settings.xml)" />
+                Maven settings.xml (-s) — mirrors/Nexus, proxy, credentials
+                <input className="input mono" value={form.mavenSettingsFile ?? ''} onChange={(e) => set('mavenSettingsFile', e.target.value)} placeholder="empty = ~/.m2/settings.xml (C:\Users\you\.m2\settings.xml)" />
               </label>
               <label>
-                Comando de containers (separador Containers)
-                <input className="input mono" value={form.containerCommand ?? ''} onChange={(e) => set('containerCommand', e.target.value)} placeholder="podman (ou docker)" />
+                Container command (Containers tab)
+                <input className="input mono" value={form.containerCommand ?? ''} onChange={(e) => set('containerCommand', e.target.value)} placeholder="podman (or docker)" />
               </label>
               <label>
-                Porta de debug base (cada serviço usa base + índice; pode ser alterada por serviço)
+                Base debug port (each service uses base + index; can be changed per service)
                 <input className="input" type="number" value={form.baseDebugPort} onChange={(e) => set('baseDebugPort', Number(e.target.value))} />
               </label>
             </div>
@@ -130,41 +130,41 @@ export function SettingsView({
             <h3>Keycloak</h3>
             <div className="form">
               <div className="form-row">
-                <label>Nome do container<input className="input mono" value={form.keycloak.containerName} onChange={(e) => setKc('containerName', e.target.value)} /></label>
-                <label>Imagem (a versão é a tag)<input className="input mono" style={{ minWidth: 300 }} value={form.keycloak.image} onChange={(e) => setKc('image', e.target.value)} /></label>
+                <label>Container name<input className="input mono" value={form.keycloak.containerName} onChange={(e) => setKc('containerName', e.target.value)} /></label>
+                <label>Image (version is the tag)<input className="input mono" style={{ minWidth: 300 }} value={form.keycloak.image} onChange={(e) => setKc('image', e.target.value)} /></label>
               </div>
               <label>
-                Pasta dos providers (montada em /opt/keycloak/providers)
+                Providers folder (mounted at /opt/keycloak/providers)
                 <div className="row">
-                  <input className="input mono grow" value={form.keycloak.providersDir ?? ''} onChange={(e) => setKc('providersDir', e.target.value)} placeholder="vazio = <pasta raiz>/keycloak-container/providers" />
-                  <button className="btn" onClick={() => pick(form.keycloak.providersDir, (d) => setKc('providersDir', d))}>Escolher…</button>
+                  <input className="input mono grow" value={form.keycloak.providersDir ?? ''} onChange={(e) => setKc('providersDir', e.target.value)} placeholder="empty = <root folder>/keycloak-container/providers" />
+                  <button className="btn" onClick={() => pick(form.keycloak.providersDir, (d) => setKc('providersDir', d))}>Choose…</button>
                 </div>
               </label>
               <label>
-                Pasta dos dados H2 (montada em /opt/keycloak/data)
+                H2 data folder (mounted at /opt/keycloak/data)
                 <div className="row">
-                  <input className="input mono grow" value={form.keycloak.dataDir ?? ''} onChange={(e) => setKc('dataDir', e.target.value)} placeholder="vazio = <pasta raiz>/keycloak-container/data" />
-                  <button className="btn" onClick={() => pick(form.keycloak.dataDir, (d) => setKc('dataDir', d))}>Escolher…</button>
+                  <input className="input mono grow" value={form.keycloak.dataDir ?? ''} onChange={(e) => setKc('dataDir', e.target.value)} placeholder="empty = <root folder>/keycloak-container/data" />
+                  <button className="btn" onClick={() => pick(form.keycloak.dataDir, (d) => setKc('dataDir', d))}>Choose…</button>
                 </div>
               </label>
-              <p className="muted small">Mudanças de imagem, pastas ou porta só se aplicam com "Recriar container" na página Keycloak (os dados ficam no disco).</p>
+              <p className="muted small">Changes to image, folders or port only take effect with "Recreate container" on the Keycloak page (data stays on disk).</p>
               <label>
-                Porta HTTP
+                HTTP port
                 <input className="input" type="number" value={form.keycloak.httpPort} onChange={(e) => setKc('httpPort', Number(e.target.value))} />
               </label>
               <div className="form-row">
                 <label>
-                  Utilizador admin
+                  Admin user
                   <input className="input" value={form.keycloak.adminUser} onChange={(e) => setKc('adminUser', e.target.value)} />
                 </label>
                 <label>
-                  Password admin
+                  Admin password
                   <input className="input" type="password" value={form.keycloak.adminPassword} onChange={(e) => setKc('adminPassword', e.target.value)} />
                 </label>
               </div>
-              <p className="muted small">Usadas para criar o admin no primeiro arranque do container (KC_BOOTSTRAP_ADMIN_*) e para a Admin REST API.</p>
+              <p className="muted small">Used to create the admin on the container's first start (KC_BOOTSTRAP_ADMIN_*) and for the Admin REST API.</p>
               <label>
-                Argumentos extra do start-dev
+                Extra start-dev arguments
                 <input className="input mono" value={form.keycloak.extraArgs ?? ''} onChange={(e) => setKc('extraArgs', e.target.value)} placeholder="--import-realm --log-level=DEBUG" />
               </label>
             </div>
@@ -175,35 +175,35 @@ export function SettingsView({
             <div className="form">
               <div className="form-row">
                 <label>Host<input className="input mono" value={form.redis.host} onChange={(e) => setRedis('host', e.target.value)} /></label>
-                <label>Porta<input className="input" type="number" value={form.redis.port} onChange={(e) => setRedis('port', Number(e.target.value))} /></label>
+                <label>Port<input className="input" type="number" value={form.redis.port} onChange={(e) => setRedis('port', Number(e.target.value))} /></label>
                 <label>DB<input className="input" type="number" value={form.redis.db} onChange={(e) => setRedis('db', Number(e.target.value))} /></label>
-                <label>Password<input className="input" type="password" value={form.redis.password ?? ''} onChange={(e) => setRedis('password', e.target.value)} placeholder="(sem password)" /></label>
+                <label>Password<input className="input" type="password" value={form.redis.password ?? ''} onChange={(e) => setRedis('password', e.target.value)} placeholder="(no password)" /></label>
               </div>
               <div className="form-row">
-                <label>Container gerido pela app<input className="input mono" value={form.redis.containerName} onChange={(e) => setRedis('containerName', e.target.value)} /></label>
-                <label>Imagem<input className="input mono" style={{ minWidth: 280 }} value={form.redis.image} onChange={(e) => setRedis('image', e.target.value)} /></label>
+                <label>Container managed by the app<input className="input mono" value={form.redis.containerName} onChange={(e) => setRedis('containerName', e.target.value)} /></label>
+                <label>Image<input className="input mono" style={{ minWidth: 280 }} value={form.redis.image} onChange={(e) => setRedis('image', e.target.value)} /></label>
               </div>
-              <p className="muted small">O botão "Criar e arrancar container" na página Redis faz <span className="mono">podman run -d --name &lt;container&gt; -p &lt;porta&gt;:6379 &lt;imagem&gt;</span> (com <span className="mono">--requirepass</span> se houver password).</p>
+              <p className="muted small">The "Create and start container" button on the Redis page runs <span className="mono">podman run -d --name &lt;container&gt; -p &lt;port&gt;:6379 &lt;image&gt;</span> (with <span className="mono">--requirepass</span> if there is a password).</p>
             </div>
           </section>
 
           <section>
-            <h3>Base de dados (Postgres)</h3>
+            <h3>Database (Postgres)</h3>
             <div className="form">
               <div className="form-row">
-                <label>Container<input className="input mono" value={form.postgres.containerName} onChange={(e) => setPg('containerName', e.target.value)} placeholder="nome de um container existente ou o gerido" /></label>
-                <label>Porta<input className="input" type="number" value={form.postgres.port} onChange={(e) => setPg('port', Number(e.target.value))} /></label>
+                <label>Container<input className="input mono" value={form.postgres.containerName} onChange={(e) => setPg('containerName', e.target.value)} placeholder="name of an existing container or the managed one" /></label>
+                <label>Port<input className="input" type="number" value={form.postgres.port} onChange={(e) => setPg('port', Number(e.target.value))} /></label>
               </div>
               <div className="form-row">
-                <label>Superutilizador<input className="input mono" value={form.postgres.superUser} onChange={(e) => setPg('superUser', e.target.value)} /></label>
+                <label>Superuser<input className="input mono" value={form.postgres.superUser} onChange={(e) => setPg('superUser', e.target.value)} /></label>
                 <label>Password<input className="input" type="password" value={form.postgres.superPassword} onChange={(e) => setPg('superPassword', e.target.value)} /></label>
               </div>
-              <label>Imagem (só se a app criar o container)<input className="input mono" style={{ minWidth: 300 }} value={form.postgres.image} onChange={(e) => setPg('image', e.target.value)} /></label>
-              <p className="muted small">Para usar um container Postgres já existente, mete aqui o nome dele (a app cria bases via <span className="mono">exec … psql</span>). A imagem/porta só contam quando é a app a criar o container.</p>
+              <label>Image (only if the app creates the container)<input className="input mono" style={{ minWidth: 300 }} value={form.postgres.image} onChange={(e) => setPg('image', e.target.value)} /></label>
+              <p className="muted small">To use an existing Postgres container, put its name here (the app creates databases via <span className="mono">exec … psql</span>). The image/port only matter when the app creates the container.</p>
             </div>
           </section>
 
-          <div><button className="btn btn-primary" onClick={save}>Guardar</button></div>
+          <div><button className="btn btn-primary" onClick={save}>Save</button></div>
         </div>
       </div>
     </main>

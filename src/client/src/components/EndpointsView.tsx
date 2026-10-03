@@ -35,9 +35,9 @@ function pretty(body: string, contentType?: string): string {
 
 function tokenSummary(token: string): string {
   const info = decodeJwt(token)
-  if (!info) return 'token (não é JWT)'
+  if (!info) return 'token (not a JWT)'
   const left = info.exp ? Math.round((info.exp * 1000 - Date.now()) / 60000) : undefined
-  const exp = left === undefined ? '' : left < 0 ? ' · expirado' : ` · expira em ${left} min`
+  const exp = left === undefined ? '' : left < 0 ? ' · expired' : ` · expires in ${left} min`
   return `${info.username ?? '?'}${exp}`
 }
 
@@ -74,7 +74,7 @@ export function EndpointsView({
         setOps(parseOpenApi(doc))
       } catch (e) {
         setOps([])
-        setSpecError(`Não consegui ler ${useSource.slice(5)}: ${e instanceof Error ? e.message : e}`)
+        setSpecError(`Could not read ${useSource.slice(5)}: ${e instanceof Error ? e.message : e}`)
       }
       return
     }
@@ -102,12 +102,12 @@ export function EndpointsView({
         setOps(parseOpenApi(JSON.parse(r.body)))
       } catch {
         setOps([])
-        setSpecError(`OpenAPI inválido em ${p}`)
+        setSpecError(`Invalid OpenAPI at ${p}`)
       }
       return
     }
     setOps([])
-    setSpecError('Sem OpenAPI em /v3/api-docs — usa o pedido livre.')
+    setSpecError('No OpenAPI at /v3/api-docs — use the free request.')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseUrl, svc.apiDocsPath, svc.id, source])
 
@@ -174,9 +174,9 @@ export function EndpointsView({
     ].filter(Boolean)
     try {
       await navigator.clipboard.writeText(parts.join(' \\\n  '))
-      notify('Comando curl copiado', 'success')
+      notify('curl command copied', 'success')
     } catch {
-      notify('Não consegui copiar para a área de transferência', 'error')
+      notify('Could not copy to clipboard', 'error')
     }
   }
 
@@ -190,15 +190,15 @@ export function EndpointsView({
     <div className="endpoints">
       <div className="ep-list">
         <div className="ep-list-head">
-          <input className="input grow" placeholder="filtrar…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          <button className="btn btn-sm" onClick={() => loadSpec()} title="Recarregar OpenAPI">⟳</button>
+          <input className="input grow" placeholder="filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <button className="btn btn-sm" onClick={() => loadSpec()} title="Reload OpenAPI">⟳</button>
         </div>
         {openApiFiles.length > 0 && (
           <div className="ep-list-head" style={{ top: 44 }}>
-            <label className="inline grow">Origem
-              <select className="input grow" value={source} onChange={(e) => { setSource(e.target.value); void loadSpec(undefined, e.target.value) }} title="Contrato: ficheiro OpenAPI do projeto (não precisa do serviço a correr). Runtime: /v3/api-docs do serviço em execução.">
-                <option value="runtime">runtime · /v3/api-docs (serviço a correr)</option>
-                {openApiFiles.map((f) => <option key={f} value={`file:${f}`}>contrato · {f}</option>)}
+            <label className="inline grow">Source
+              <select className="input grow" value={source} onChange={(e) => { setSource(e.target.value); void loadSpec(undefined, e.target.value) }} title="Contract: project OpenAPI file (service does not need to be running). Runtime: /v3/api-docs of the running service.">
+                <option value="runtime">runtime · /v3/api-docs (service running)</option>
+                {openApiFiles.map((f) => <option key={f} value={`file:${f}`}>contract · {f}</option>)}
               </select>
             </label>
           </div>
@@ -206,7 +206,7 @@ export function EndpointsView({
         {apiGroups.length > 0 && source === 'runtime' && (
           <div className="ep-list-head" style={{ top: openApiFiles.length ? 84 : 44 }}>
             <label className="inline grow">API
-              <select className="input grow" value={apiGroup} onChange={(e) => { setApiGroup(e.target.value); void loadSpec(e.target.value) }} title="Grupos Swagger deste serviço (springdoc)">
+              <select className="input grow" value={apiGroup} onChange={(e) => { setApiGroup(e.target.value); void loadSpec(e.target.value) }} title="Swagger groups for this service (springdoc)">
                 {apiGroups.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
               </select>
             </label>
@@ -214,9 +214,9 @@ export function EndpointsView({
         )}
         <button className={`ep-item${sel === null ? ' selected' : ''}`} onClick={() => choose(null)}>
           <span className="method method-any">ANY</span>
-          <span className="ep-path">Pedido livre</span>
+          <span className="ep-path">Free request</span>
         </button>
-        {ops === null && <div className="muted pad small">A ler OpenAPI…</div>}
+        {ops === null && <div className="muted pad small">Reading OpenAPI…</div>}
         {specError && <div className="muted pad small">{specError}</div>}
         {[...groups.entries()].map(([tag, list]) => (
           <section key={tag}>
@@ -232,8 +232,8 @@ export function EndpointsView({
       </div>
 
       <div className="ep-main">
-        {!running && source.startsWith('file:') && <div className="muted small">A ver o contrato {source.slice(5)} — para <b>testar</b>, o serviço tem de estar a responder em {baseUrl}.</div>}
-        {!running && source === 'runtime' && <div className="muted small">O serviço não foi arrancado por esta app — os pedidos vão na mesma para {baseUrl}.</div>}
+        {!running && source.startsWith('file:') && <div className="muted small">Viewing contract {source.slice(5)} — to <b>test</b>, the service must be responding at {baseUrl}.</div>}
+        {!running && source === 'runtime' && <div className="muted small">The service was not started by this app — requests still go to {baseUrl}.</div>}
         {sel?.summary && <div className="muted">{sel.summary}</div>}
         <div className="row">
           <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
@@ -244,16 +244,16 @@ export function EndpointsView({
             value={path}
             onChange={(e) => setPath(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && send()}
-            placeholder="/api/… ou http://…"
+            placeholder="/api/… or http://…"
           />
-          <button className="btn btn-primary" disabled={sending} onClick={send}>{sending ? 'A enviar…' : 'Enviar'}</button>
-          <button className="btn" onClick={copyCurl} title="Copiar como comando curl">curl</button>
+          <button className="btn btn-primary" disabled={sending} onClick={send}>{sending ? 'Sending…' : 'Send'}</button>
+          <button className="btn" onClick={copyCurl} title="Copy as curl command">curl</button>
         </div>
         <div className="muted small mono ellipsis" title={url}>{url}</div>
 
         {sel && sel.params.length > 0 && (
           <section>
-            <h3>Parâmetros</h3>
+            <h3>Parameters</h3>
             <table className="kv">
               <tbody>
                 {sel.params.map((p) => (
@@ -279,16 +279,16 @@ export function EndpointsView({
             <label className="check">
               <input type="checkbox" checked={useToken && !!token} disabled={!token} onChange={(e) => setUseToken(e.target.checked)} /> Authorization: Bearer
             </label>
-            <span className="muted small grow">{token ? tokenSummary(token) : 'sem token'}</span>
-            <button className="btn btn-sm" onClick={() => setShowAuth((v) => !v)}>{showAuth ? 'Fechar' : 'Obter token do Keycloak…'}</button>
-            {token && <button className="btn btn-sm" onClick={() => setToken('')}>Limpar token</button>}
+            <span className="muted small grow">{token ? tokenSummary(token) : 'no token'}</span>
+            <button className="btn btn-sm" onClick={() => setShowAuth((v) => !v)}>{showAuth ? 'Close' : 'Get Keycloak token…'}</button>
+            {token && <button className="btn btn-sm" onClick={() => setToken('')}>Clear token</button>}
           </div>
           {showAuth && <TokenForm kcPort={kcPort} notify={notify} onDone={() => setShowAuth(false)} />}
         </section>
 
         <section>
           <h3>Headers</h3>
-          <textarea className="input mono" rows={2} value={headersText} onChange={(e) => setHeadersText(e.target.value)} placeholder={'Content-Type: application/json\nX-Custom: valor'} />
+          <textarea className="input mono" rows={2} value={headersText} onChange={(e) => setHeadersText(e.target.value)} placeholder={'Content-Type: application/json\nX-Custom: value'} />
         </section>
 
         {hasBody && (
@@ -299,8 +299,8 @@ export function EndpointsView({
         )}
 
         <section>
-          <h3>Resposta</h3>
-          {resp ? <ResponseView r={resp} /> : <div className="muted small">Ainda sem resposta.</div>}
+          <h3>Response</h3>
+          {resp ? <ResponseView r={resp} /> : <div className="muted small">No response yet.</div>}
         </section>
       </div>
     </div>
@@ -309,7 +309,7 @@ export function EndpointsView({
 
 function ResponseView({ r }: { r: HttpResponse }) {
   const [showHeaders, setShowHeaders] = useState(false)
-  if (r.error) return <div className="text-error">Sem resposta: {r.error}</div>
+  if (r.error) return <div className="text-error">No response: {r.error}</div>
   const tone = r.status < 300 ? 'ok' : r.status < 400 ? 'redir' : 'err'
   const ct = r.headers['content-type']
   const text = pretty(r.body, ct)
@@ -320,11 +320,11 @@ function ResponseView({ r }: { r: HttpResponse }) {
         <span className="muted small">{r.timeMs} ms · {r.body.length} bytes{ct ? ` · ${ct}` : ''}</span>
         <span className="grow" />
         <button className="btn btn-sm" onClick={() => setShowHeaders((v) => !v)}>
-          {showHeaders ? 'Esconder headers' : `Headers (${Object.keys(r.headers).length})`}
+          {showHeaders ? 'Hide headers' : `Headers (${Object.keys(r.headers).length})`}
         </button>
       </div>
       {showHeaders && <pre className="resp-body small">{Object.entries(r.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}</pre>}
-      <pre className="resp-body">{text || <span className="muted">(corpo vazio)</span>}</pre>
+      <pre className="resp-body">{text || <span className="muted">(empty body)</span>}</pre>
     </div>
   )
 }
@@ -358,7 +358,7 @@ function TokenForm({ kcPort, notify, onDone }: { kcPort: number; notify: Notify;
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: form.toString()
       })
-      if (r.error) throw new Error(`Keycloak não responde em localhost:${kcPort}: ${r.error}`)
+      if (r.error) throw new Error(`Keycloak not responding at localhost:${kcPort}: ${r.error}`)
       let j: { access_token?: string; expires_in?: number; error?: string; error_description?: string } = {}
       try {
         j = JSON.parse(r.body)
@@ -372,7 +372,7 @@ function TokenForm({ kcPort, notify, onDone }: { kcPort: number; notify: Notify;
       } catch {
         /* ignore */
       }
-      notify(`Token obtido para ${username} (expira em ${j.expires_in ?? '?'} s)`, 'success')
+      notify(`Token obtained for ${username} (expires in ${j.expires_in ?? '?'} s)`, 'success')
       onDone()
     } catch (e) {
       notify(e instanceof Error ? e.message : String(e), 'error')
@@ -385,11 +385,11 @@ function TokenForm({ kcPort, notify, onDone }: { kcPort: number; notify: Notify;
     <div className="form form-row">
       <label>Realm<input className="input" value={realm} onChange={(e) => setRealm(e.target.value)} /></label>
       <label>Client ID<input className="input" value={clientId} onChange={(e) => setClientId(e.target.value)} /></label>
-      <label>Utilizador<input className="input" value={username} onChange={(e) => setUsername(e.target.value)} /></label>
+      <label>Username<input className="input" value={username} onChange={(e) => setUsername(e.target.value)} /></label>
       <label>Password<input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && get()} /></label>
-      <label>Client secret (opcional)<input className="input" type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} /></label>
-      <button className="btn btn-primary" disabled={busy || !username} onClick={get}>{busy ? 'A obter…' : 'Obter token'}</button>
-      <span className="muted small">Direct access grants tem de estar ativo no client.</span>
+      <label>Client secret (optional)<input className="input" type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} /></label>
+      <button className="btn btn-primary" disabled={busy || !username} onClick={get}>{busy ? 'Obtaining…' : 'Get token'}</button>
+      <span className="muted small">Direct access grants must be enabled on the client.</span>
     </div>
   )
 }

@@ -69,20 +69,20 @@ export function MapView({ states, onSelect, fail }: { states: Record<string, Pro
     return { deps, ids, isolated, pos, width, height, name, edges: graph.edges.filter((e) => pos.has(e.from) && pos.has(e.to)) }
   }, [graph])
 
-  if (!graph) return <div className="empty">A construir o mapa…</div>
+  if (!graph) return <div className="empty">Building the map…</div>
 
   return (
     <main className="service">
       <div className="svc-header">
         <div className="grow">
-          <h2>Mapa de dependências</h2>
-          <div className="muted small">Setas apontam para o serviço de que se depende (à esquerda). Clica num serviço para o abrir.</div>
+          <h2>Dependency map</h2>
+          <div className="muted small">Arrows point to the service being depended on (on the left). Click a service to open it.</div>
         </div>
-        <button className="btn" onClick={load}>⟳ Atualizar</button>
+        <button className="btn" onClick={load}>⟳ Refresh</button>
       </div>
       <div className="tab-body" style={{ overflow: 'auto', padding: 16 }}>
         {!layout || !layout.ids.length ? (
-          <div className="empty">Nenhuma dependência entre serviços detetada. (Definem-se por URLs na configuração ou no campo Dependências.)</div>
+          <div className="empty">No dependencies between services detected. (They are defined by URLs in the configuration or in the Dependencies field.)</div>
         ) : (
           <svg width={layout.width} height={layout.height} style={{ minWidth: '100%' }}>
             <defs>
@@ -116,7 +116,7 @@ export function MapView({ states, onSelect, fail }: { states: Record<string, Pro
           </svg>
         )}
         {layout && layout.isolated.length > 0 && (
-          <div className="muted small pad">Sem dependências: {layout.isolated.map((n) => n.name).join(', ')}</div>
+          <div className="muted small pad">No dependencies: {layout.isolated.map((n) => n.name).join(', ')}</div>
         )}
       </div>
     </main>

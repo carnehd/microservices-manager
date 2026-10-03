@@ -53,14 +53,14 @@ export function ConfigView({
   return (
     <div className="config">
       <section>
-        <h3>Detetado no projeto</h3>
+        <h3>Detected in the project</h3>
         <table className="kv">
           <tbody>
-            <tr><th>Pasta</th><td className="mono">{svc.path}</td></tr>
-            <tr><th>Artefacto</th><td className="mono">{[svc.groupId, svc.artifactId, svc.version].filter(Boolean).join(':')}</td></tr>
-            {svc.modules && <tr><th>Módulos</th><td className="mono">{svc.modules.join(', ')}<br /><span className="muted">executável: {svc.runModule} (arranca com mvn -pl {svc.runModule} -am)</span></td></tr>}
-            {svc.swaggerGroups?.length ? <tr><th>Grupos Swagger</th><td className="mono">{svc.swaggerGroups.join(', ')}</td></tr> : null}
-            {svc.kind === 'spring-boot' && <tr><th>Porta (config)</th><td className="mono">{svc.port ?? '—'}</td></tr>}
+            <tr><th>Folder</th><td className="mono">{svc.path}</td></tr>
+            <tr><th>Artifact</th><td className="mono">{[svc.groupId, svc.artifactId, svc.version].filter(Boolean).join(':')}</td></tr>
+            {svc.modules && <tr><th>Modules</th><td className="mono">{svc.modules.join(', ')}<br /><span className="muted">executable: {svc.runModule} (starts with mvn -pl {svc.runModule} -am)</span></td></tr>}
+            {svc.swaggerGroups?.length ? <tr><th>Swagger groups</th><td className="mono">{svc.swaggerGroups.join(', ')}</td></tr> : null}
+            {svc.kind === 'spring-boot' && <tr><th>Port (config)</th><td className="mono">{svc.port ?? '—'}</td></tr>}
             {svc.contextPath && <tr><th>Context path</th><td className="mono">{svc.contextPath}</td></tr>}
             {svc.swaggerLib && <tr><th>Swagger</th><td className="mono">{svc.swaggerLib} · {svc.swaggerPath}</td></tr>}
             {ds && (
@@ -73,66 +73,66 @@ export function ConfigView({
                 </td>
               </tr>
             )}
-            {svc.profiles.length > 0 && <tr><th>Perfis</th><td className="mono">{svc.profiles.join(', ')}</td></tr>}
-            {svc.configFiles.length > 0 && <tr><th>Ficheiros config</th><td className="mono">{svc.configFiles.join(', ')}{svc.modules ? <span className="muted"> em {svc.resourcesDir}</span> : null}</td></tr>}
-            {svc.openApiFiles?.length ? <tr><th>Contratos OpenAPI</th><td className="mono" style={{ whiteSpace: 'pre-wrap' }}>{svc.openApiFiles.join('\n')}</td></tr> : null}
+            {svc.profiles.length > 0 && <tr><th>Profiles</th><td className="mono">{svc.profiles.join(', ')}</td></tr>}
+            {svc.configFiles.length > 0 && <tr><th>Config files</th><td className="mono">{svc.configFiles.join(', ')}{svc.modules ? <span className="muted"> in {svc.resourcesDir}</span> : null}</td></tr>}
+            {svc.openApiFiles?.length ? <tr><th>OpenAPI contracts</th><td className="mono" style={{ whiteSpace: 'pre-wrap' }}>{svc.openApiFiles.join('\n')}</td></tr> : null}
             {svc.spiProviders.length > 0 && <tr><th>SPIs (META-INF/services)</th><td className="mono">{svc.spiProviders.join('\n')}</td></tr>}
-            <tr><th>Maven wrapper</th><td className="mono">{svc.wrapperDir ?? 'não encontrado (usa mvn global)'}</td></tr>
-            <tr><th>Jar em target/</th><td className="mono">{svc.jarPath ?? '— (faz Build)'}</td></tr>
+            <tr><th>Maven wrapper</th><td className="mono">{svc.wrapperDir ?? 'not found (uses global mvn)'}</td></tr>
+            <tr><th>Jar in target/</th><td className="mono">{svc.jarPath ?? '— (run Build)'}</td></tr>
           </tbody>
         </table>
       </section>
 
       <section>
-        <h3>Arranque</h3>
+        <h3>Startup</h3>
         <div className="form">
           {svc.kind === 'spring-boot' && (
             <>
               <label>
-                Perfil Spring
-                <input className="input" list={`profiles-${svc.id}`} value={profile} onChange={(e) => setProfile(e.target.value)} placeholder="ex: local,dev" />
+                Spring profile
+                <input className="input" list={`profiles-${svc.id}`} value={profile} onChange={(e) => setProfile(e.target.value)} placeholder="e.g. local,dev" />
                 <datalist id={`profiles-${svc.id}`}>{svc.profiles.map((p) => <option key={p} value={p} />)}</datalist>
               </label>
               <label>
-                Porta HTTP de arranque
-                <input className="input" type="number" value={port} onChange={(e) => setPort(e.target.value)} placeholder={`do application.yml: ${svc.port ?? 8080}`} />
-                <span className="muted small">Passa --server.port ao arrancar; vazio = a do ficheiro de configuração</span>
+                Startup HTTP port
+                <input className="input" type="number" value={port} onChange={(e) => setPort(e.target.value)} placeholder={`from application.yml: ${svc.port ?? 8080}`} />
+                <span className="muted small">Passes --server.port at startup; empty = the one from the config file</span>
               </label>
               <label>
-                Porta de debug (JDWP)
-                <input className="input" type="number" value={debugPort} onChange={(e) => setDebugPort(e.target.value)} placeholder={`automática: ${defaultDebugPort}`} />
+                Debug port (JDWP)
+                <input className="input" type="number" value={debugPort} onChange={(e) => setDebugPort(e.target.value)} placeholder={`automatic: ${defaultDebugPort}`} />
               </label>
               <label>
-                Argumentos JVM extra
+                Extra JVM arguments
                 <input className="input mono" value={jvmArgs} onChange={(e) => setJvmArgs(e.target.value)} placeholder="-Xmx1g -Dfoo=bar" />
               </label>
               <label>
-                Caminho do Swagger UI (override)
+                Swagger UI path (override)
                 <input className="input mono" value={swaggerPath} onChange={(e) => setSwaggerPath(e.target.value)} placeholder={svc.swaggerPath ?? '/swagger-ui/index.html'} />
               </label>
             </>
           )}
           <label>
-            Repositório local do Maven só para este serviço (-Dmaven.repo.local)
-            <input className="input mono" value={mavenRepoLocal} onChange={(e) => setMavenRepoLocal(e.target.value)} placeholder="vazio = o das Definições" />
+            Local Maven repository for this service only (-Dmaven.repo.local)
+            <input className="input mono" value={mavenRepoLocal} onChange={(e) => setMavenRepoLocal(e.target.value)} placeholder="empty = the one from Settings" />
           </label>
           <label>
-            Argumentos Maven extra
+            Extra Maven arguments
             <input className="input mono" value={extraArgs} onChange={(e) => setExtraArgs(e.target.value)} placeholder="-Dmaven.test.skip=true -P local" />
           </label>
           {svc.kind === 'spring-boot' && (
             <label>
-              Dependências (nomes de serviços, separados por vírgula) — usadas por "Arrancar com dependências"
-              <input className="input mono" value={dependsOn} onChange={(e) => setDependsOn(e.target.value)} placeholder={svc.dependsOn?.length ? `sugerido: ${svc.dependsOn.join(', ')}` : 'ex.: product-service, user-service'} />
-              {svc.dependsOn?.length ? <span className="muted small">inferidas dos URLs: {svc.dependsOn.join(', ')} — vazio acima = usar estas</span> : <span className="muted small">nenhuma inferida dos URLs da configuração</span>}
+              Dependencies (service names, comma-separated) — used by "Start with dependencies"
+              <input className="input mono" value={dependsOn} onChange={(e) => setDependsOn(e.target.value)} placeholder={svc.dependsOn?.length ? `suggested: ${svc.dependsOn.join(', ')}` : 'e.g. service-a, service-b'} />
+              {svc.dependsOn?.length ? <span className="muted small">inferred from the URLs: {svc.dependsOn.join(', ')} — empty above = use these</span> : <span className="muted small">none inferred from the config URLs</span>}
             </label>
           )}
           <label>
-            Variáveis de ambiente (uma por linha, CHAVE=valor)
+            Environment variables (one per line, KEY=value)
             <textarea className="input mono" rows={4} value={env} onChange={(e) => setEnv(e.target.value)} placeholder={'DB_HOST=localhost\nSPRING_DATASOURCE_PASSWORD=secret'} />
           </label>
           <div>
-            <button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? 'A guardar…' : 'Guardar'}</button>
+            <button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
       </section>

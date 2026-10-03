@@ -4,7 +4,7 @@ import { api } from '../api'
 import { Badge } from './common'
 
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
-const CODE_LABEL: Record<string, string> = { M: 'modificado', A: 'novo', D: 'apagado', R: 'renomeado', C: 'copiado', U: 'conflito', '?': 'não seguido', T: 'tipo' }
+const CODE_LABEL: Record<string, string> = { M: 'modified', A: 'new', D: 'deleted', R: 'renamed', C: 'copied', U: 'conflict', '?': 'untracked', T: 'type' }
 
 export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; notify: Notify; fail: (e: unknown) => void; onChanged?: () => Promise<void> }) {
   const [info, setInfo] = useState<GitInfo | null>(null)
@@ -45,8 +45,8 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
     }
     let cancelled = false
     api.git.diff(svc.id, sel.repoPath, sel.staged && !sel.unstaged, sel.untracked)
-      .then((d) => !cancelled && setDiff(d || '(sem diferenças de texto — ficheiro binário ou vazio)'))
-      .catch((e) => !cancelled && setDiff(`erro: ${e instanceof Error ? e.message : e}`))
+      .then((d) => !cancelled && setDiff(d || '(no text differences — binary or empty file)'))
+      .catch((e) => !cancelled && setDiff(`error: ${e instanceof Error ? e.message : e}`))
     return () => {
       cancelled = true
     }
@@ -67,11 +67,11 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
     }
   }
 
-  if (!info) return <div className="empty">A ler estado do git…</div>
+  if (!info) return <div className="empty">Reading git status…</div>
   if (!info.isRepo) {
     return (
       <div className="empty">
-        <p>{info.error ?? 'Esta pasta não está num repositório git.'}</p>
+        <p>{info.error ?? 'This folder is not in a git repository.'}</p>
         <p className="muted small mono">{svc.path}</p>
       </div>
     )
@@ -90,52 +90,52 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
           <h2 style={{ fontSize: 16, margin: 0 }} title={[info.root, info.upstream ? `upstream ${info.upstream}` : 'sem upstream', info.remote ? `origin ${info.remote}` : ''].filter(Boolean).join(' · ')}>
             ⎇ {info.branch ?? '?'}{info.detached && <Badge tone="amber">detached</Badge>}
           </h2>
-          {info.upstream && !!info.behind && <Badge tone="amber" title="commits no remoto por trazer (Pull)">↓ {info.behind}</Badge>}
-          {info.upstream && !!info.ahead && <Badge tone="blue" title="commits locais por enviar (Push)">↑ {info.ahead}</Badge>}
+          {info.upstream && !!info.behind && <Badge tone="amber" title="commits on the remote to pull (Pull)">↓ {info.behind}</Badge>}
+          {info.upstream && !!info.ahead && <Badge tone="blue" title="local commits to push (Push)">↑ {info.ahead}</Badge>}
           <span className="grow" />
-          <button className="btn btn-sm" disabled={!!busy} onClick={() => act('fetch', () => api.git.fetch(svc.id), 'Fetch feito')}>{busy === 'fetch' ? '…' : 'Fetch'}</button>
-          <button className="btn btn-sm" disabled={!!busy || !info.upstream} onClick={() => act('pull', () => api.git.pull(svc.id), (r) => trimmed(String(r)).split('\n')[0] || 'Pull feito')} title="git pull --ff-only">Pull{info.behind ? ` ↓${info.behind}` : ''}</button>
+          <button className="btn btn-sm" disabled={!!busy} onClick={() => act('fetch', () => api.git.fetch(svc.id), 'Fetch done')}>{busy === 'fetch' ? '…' : 'Fetch'}</button>
+          <button className="btn btn-sm" disabled={!!busy || !info.upstream} onClick={() => act('pull', () => api.git.pull(svc.id), (r) => trimmed(String(r)).split('\n')[0] || 'Pull done')} title="git pull --ff-only">Pull{info.behind ? ` ↓${info.behind}` : ''}</button>
           <button className="btn btn-sm btn-primary" disabled={!!busy || (!info.ahead && !!info.upstream)} title={info.upstream ? 'git push' : `git push -u origin ${info.branch}`}
-            onClick={() => { if (confirm(`Enviar ${info.branch} para ${info.remote ?? 'origin'}?`)) void act('push', () => api.git.push(svc.id), (r) => trimmed(String(r)).split('\n')[0] || 'Push feito') }}>Push{info.ahead ? ` ↑${info.ahead}` : ''}</button>
-          <button className="btn btn-sm" disabled={!!busy} onClick={() => load()} title="atualizar">⟳</button>
+            onClick={() => { if (confirm(`Push ${info.branch} to ${info.remote ?? 'origin'}?`)) void act('push', () => api.git.push(svc.id), (r) => trimmed(String(r)).split('\n')[0] || 'Push done') }}>Push{info.ahead ? ` ↑${info.ahead}` : ''}</button>
+          <button className="btn btn-sm" disabled={!!busy} onClick={() => load()} title="refresh">⟳</button>
         </div>
       </section>
 
       <div className="tabs inline">
-        <button className={tab === 'changes' ? 'active' : ''} onClick={() => setTab('changes')}>Alterações {info.changes.length ? <span className="count">{info.changes.length}</span> : null}</button>
+        <button className={tab === 'changes' ? 'active' : ''} onClick={() => setTab('changes')}>Changes {info.changes.length ? <span className="count">{info.changes.length}</span> : null}</button>
         <button className={tab === 'branches' ? 'active' : ''} onClick={() => setTab('branches')}>Branches <span className="count">{local.length}</span></button>
-        <button className={tab === 'log' ? 'active' : ''} onClick={() => setTab('log')}>Histórico</button>
+        <button className={tab === 'log' ? 'active' : ''} onClick={() => setTab('log')}>History</button>
       </div>
 
       {tab === 'changes' && (
         <>
           <section>
             <div className="row">
-              <h3 className="grow">Alterações {info.changes.length ? `(${staged.length} preparadas, ${unstaged.length} por preparar)` : ''}</h3>
-              <button className="btn btn-sm" disabled={!!busy || !unstaged.length} onClick={() => act('stage', () => api.git.stage(svc.id, unstaged.map((c) => c.repoPath)))}>Preparar tudo</button>
-              <button className="btn btn-sm" disabled={!!busy || !staged.length} onClick={() => act('unstage', () => api.git.unstage(svc.id, staged.map((c) => c.repoPath)))}>Despreparar tudo</button>
+              <h3 className="grow">Changes {info.changes.length ? `(${staged.length} staged, ${unstaged.length} unstaged)` : ''}</h3>
+              <button className="btn btn-sm" disabled={!!busy || !unstaged.length} onClick={() => act('stage', () => api.git.stage(svc.id, unstaged.map((c) => c.repoPath)))}>Stage all</button>
+              <button className="btn btn-sm" disabled={!!busy || !staged.length} onClick={() => act('unstage', () => api.git.unstage(svc.id, staged.map((c) => c.repoPath)))}>Unstage all</button>
             </div>
-            <p className="muted small">Alterações por commitar na pasta de trabalho — não pertencem a nenhuma branch até fazeres commit; ao mudar de branch acompanham-te.</p>
-            {!info.changes.length && <p className="muted">Sem alterações — a árvore está limpa.</p>}
+            <p className="muted small">Uncommitted changes in the working folder — they belong to no branch until you commit; when you switch branches they come with you.</p>
+            {!info.changes.length && <p className="muted">No changes — the tree is clean.</p>}
             {info.changes.length > 0 && (
               <table className="grid">
-                <thead><tr><th>Prep.</th><th>Ficheiro</th><th>Estado</th><th></th></tr></thead>
+                <thead><tr><th>Staged</th><th>File</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                   {info.changes.map((c) => (
                     <tr key={c.repoPath} className={sel?.repoPath === c.repoPath ? 'selected-row' : ''}>
                       <td>
-                        <input type="checkbox" checked={c.staged && !c.unstaged} disabled={!!busy} title={c.staged ? 'despreparar' : 'preparar (git add)'}
+                        <input type="checkbox" checked={c.staged && !c.unstaged} disabled={!!busy} title={c.staged ? 'unstage' : 'stage (git add)'}
                           onChange={(e) => act('stage1', () => (e.target.checked ? api.git.stage(svc.id, [c.repoPath]) : api.git.unstage(svc.id, [c.repoPath])))} />
                       </td>
                       <td className="mono small"><a className="link" onClick={() => setSel(c)}>{c.origPath ? `${c.origPath} → ` : ''}{c.path}</a></td>
                       <td className="small">
                         <Badge tone={c.untracked ? 'purple' : c.code === 'D' ? 'red' : c.code === 'A' ? 'green' : 'amber'}>{CODE_LABEL[c.code] ?? c.code}</Badge>
-                        {c.staged && c.unstaged ? <span className="muted"> (parcialmente preparado)</span> : ''}
+                        {c.staged && c.unstaged ? <span className="muted"> (partially staged)</span> : ''}
                       </td>
                       <td className="cell-actions">
                         <button className="btn btn-sm" onClick={() => setSel(c)}>Diff</button>
                         <button className="btn btn-sm btn-danger" disabled={!!busy}
-                          onClick={() => { if (confirm(c.untracked ? `Apagar o ficheiro não seguido ${c.path}?` : `Descartar as alterações em ${c.path}? (volta ao último commit)`)) void act('discard', () => api.git.discard(svc.id, [{ repoPath: c.repoPath, untracked: c.untracked }]), `${c.path} descartado`) }}>Descartar</button>
+                          onClick={() => { if (confirm(c.untracked ? `Delete the untracked file ${c.path}?` : `Discard the changes in ${c.path}? (reverts to the last commit)`)) void act('discard', () => api.git.discard(svc.id, [{ repoPath: c.repoPath, untracked: c.untracked }]), `${c.path} discarded`) }}>Discard</button>
                       </td>
                     </tr>
                   ))}
@@ -144,7 +144,7 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
             )}
             {sel && (
               <div>
-                <div className="row"><span className="mono small grow">{sel.path} {sel.staged && !sel.unstaged ? '(preparado)' : ''}</span><button className="btn btn-sm" onClick={() => setSel(null)}>Fechar</button></div>
+                <div className="row"><span className="mono small grow">{sel.path} {sel.staged && !sel.unstaged ? '(staged)' : ''}</span><button className="btn btn-sm" onClick={() => setSel(null)}>Close</button></div>
                 <pre className="resp-body diff">{diff.split('\n').map((l, i) => <div key={i} className={l.startsWith('+') && !l.startsWith('+++') ? 'diff-add' : l.startsWith('-') && !l.startsWith('---') ? 'diff-del' : l.startsWith('@@') ? 'diff-hunk' : ''}>{l || ' '}</div>)}</pre>
               </div>
             )}
@@ -152,9 +152,9 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
           <section>
             <h3>Commit</h3>
             <div className="row">
-              <input className="input grow" placeholder="mensagem do commit" value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && message.trim() && staged.length) void act('commit', () => api.git.commit(svc.id, message, false), () => { setMessage(''); return 'Commit feito' }) }} />
-              <button className="btn btn-primary" disabled={!!busy || !message.trim() || !staged.length} onClick={() => act('commit', () => api.git.commit(svc.id, message, false), () => { setMessage(''); return 'Commit feito' })}>Commit ({staged.length})</button>
-              <button className="btn" disabled={!!busy || !message.trim() || !info.changes.length} title="git add -A (nesta pasta) + commit" onClick={() => act('commit', () => api.git.commit(svc.id, message, true), () => { setMessage(''); return 'Commit feito' })}>Preparar tudo + commit</button>
+              <input className="input grow" placeholder="commit message" value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && message.trim() && staged.length) void act('commit', () => api.git.commit(svc.id, message, false), () => { setMessage(''); return 'Commit done' }) }} />
+              <button className="btn btn-primary" disabled={!!busy || !message.trim() || !staged.length} onClick={() => act('commit', () => api.git.commit(svc.id, message, false), () => { setMessage(''); return 'Commit done' })}>Commit ({staged.length})</button>
+              <button className="btn" disabled={!!busy || !message.trim() || !info.changes.length} title="git add -A (in this folder) + commit" onClick={() => act('commit', () => api.git.commit(svc.id, message, true), () => { setMessage(''); return 'Commit done' })}>Stage all + commit</button>
             </div>
           </section>
         </>
@@ -163,29 +163,29 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
       {tab === 'branches' && (
         <>
           <section>
-            <h3>Nova branch (a partir de {info.branch})</h3>
+            <h3>New branch (from {info.branch})</h3>
             <div className="row">
-              <input className="input mono grow" placeholder="feature/nome" value={newBranch} onChange={(e) => setNewBranch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && newBranch.trim() && act('branch', () => api.git.createBranch(svc.id, newBranch), () => { setNewBranch(''); return `Branch ${newBranch} criada e ativa` })} />
-              <button className="btn btn-primary" disabled={!!busy || !newBranch.trim()} onClick={() => act('branch', () => api.git.createBranch(svc.id, newBranch), () => { setNewBranch(''); return `Branch ${newBranch} criada e ativa` })}>Criar e mudar</button>
+              <input className="input mono grow" placeholder="feature/name" value={newBranch} onChange={(e) => setNewBranch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && newBranch.trim() && act('branch', () => api.git.createBranch(svc.id, newBranch), () => { setNewBranch(''); return `Branch ${newBranch} created and active` })} />
+              <button className="btn btn-primary" disabled={!!busy || !newBranch.trim()} onClick={() => act('branch', () => api.git.createBranch(svc.id, newBranch), () => { setNewBranch(''); return `Branch ${newBranch} created and active` })}>Create and switch</button>
             </div>
-            {info.changes.length > 0 && <p className="muted small">As alterações por commitar acompanham-te para a branch nova.</p>}
+            {info.changes.length > 0 && <p className="muted small">Uncommitted changes come with you to the new branch.</p>}
           </section>
           <section>
             <div className="row">
               <h3 className="grow">Branches</h3>
-              <label className="check"><input type="checkbox" checked={showRemote} onChange={(e) => setShowRemote(e.target.checked)} /> mostrar remotas ({remote.length})</label>
+              <label className="check"><input type="checkbox" checked={showRemote} onChange={(e) => setShowRemote(e.target.checked)} /> show remote ({remote.length})</label>
             </div>
             <table className="grid">
-              <thead><tr><th>Branch</th><th>Upstream</th><th>Último commit</th><th></th></tr></thead>
+              <thead><tr><th>Branch</th><th>Upstream</th><th>Last commit</th><th></th></tr></thead>
               <tbody>
                 {[...local, ...(showRemote ? remote : [])].map((b) => (
                   <tr key={b.name}>
-                    <td className="mono">{b.current ? <b>⎇ {b.name}</b> : b.name}{b.remote && <Badge>remota</Badge>}</td>
+                    <td className="mono">{b.current ? <b>⎇ {b.name}</b> : b.name}{b.remote && <Badge>remote</Badge>}</td>
                     <td className="mono small muted">{b.upstream ?? ''}</td>
                     <td className="small muted">{b.when}{b.subject ? ` — ${b.subject}` : ''}</td>
                     <td className="cell-actions">
                       {!b.current && (
-                        <button className="btn btn-sm" disabled={!!busy} onClick={() => act('checkout', () => api.git.checkout(svc.id, b.name), `Agora em ${b.name.replace(/^(origin|upstream)\//, '')}`)}>Mudar para</button>
+                        <button className="btn btn-sm" disabled={!!busy} onClick={() => act('checkout', () => api.git.checkout(svc.id, b.name), `Now on ${b.name.replace(/^(origin|upstream)\//, '')}`)}>Switch to</button>
                       )}
                     </td>
                   </tr>
@@ -198,7 +198,7 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
 
       {tab === 'log' && (
         <section>
-          <h3>Últimos commits {info.prefix ? '(que tocam nesta pasta)' : ''}</h3>
+          <h3>Latest commits {info.prefix ? '(touching this folder)' : ''}</h3>
           <table className="grid">
             <tbody>
               {log.map((c) => (
@@ -208,7 +208,7 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
                   <td className="small muted">{c.author}, {c.when}</td>
                 </tr>
               ))}
-              {!log.length && <tr><td className="muted">Sem commits.</td></tr>}
+              {!log.length && <tr><td className="muted">No commits.</td></tr>}
             </tbody>
           </table>
         </section>

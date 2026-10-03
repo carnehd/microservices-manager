@@ -1,6 +1,6 @@
 import type {
-  AppSettings, ContainerInfo, DeployResult, DirListing, BrunoCollection, DbInfo, DepGraph, DepsInfo, DiagReport, EngineInfo, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
-  KeycloakInfo, LogLine, ProcState, ScanResult, StartMode
+  AppSettings, ContainerInfo, ContainerExecResult, DeployResult, DirListing, BrunoCollection, DbInfo, DepGraph, DepsInfo, DiagReport, EngineInfo, GrafanaLogLine, GrafanaSettings, GrafanaTestResult, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
+  KeycloakInfo, LogLine, ProcState, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult, SrDbStatus, SrTableData, StartMode
 } from '../../shared/types'
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
@@ -61,9 +61,16 @@ export const api = {
   startService: (id: string, mode: StartMode) => req<ProcState>('POST', `/api/services/${enc(id)}/start`, { mode }),
   startWithDeps: (id: string, mode: StartMode) => req<{ order: string[]; started: string[]; skipped: string[]; failed: string[] }>('POST', `/api/services/${enc(id)}/start-with-deps`, { mode }),
   depOrder: (id: string) => req<{ effective: string[]; order: string[] }>('GET', `/api/services/${enc(id)}/dep-order`),
+  srdb: {
+    status: (id: string) => req<SrDbStatus>('GET', `/api/services/${enc(id)}/srdb`),
+    create: (id: string, reset = false) => req<string[]>('POST', `/api/services/${enc(id)}/srdb/create`, { reset }),
+    drop: (id: string) => req<string[]>('POST', `/api/services/${enc(id)}/srdb/drop`),
+    table: (id: string, name: string, limit = 100) => req<SrTableData>('GET', `/api/services/${enc(id)}/srdb/table?name=${enc(name)}&limit=${limit}`)
+  },
   defaultDebugPort: (id: string) => req<number>('GET', `/api/services/${enc(id)}/debug-port`),
   envs: (id: string) => req<EnvsInfo>('GET', `/api/services/${enc(id)}/envs`),
   composeEnv: (id: string, body: EnvMix & { force?: boolean; setProfile?: boolean }) => req<EnvComposeResult>('POST', `/api/services/${enc(id)}/envs/compose`, body),
+  setEnvProfile: (id: string, profile?: string) => req<{ file: string }>('POST', `/api/services/${enc(id)}/envs/profile`, { profile }),
   git: {
     summary: () => req<GitSummary>('GET', '/api/git/summary'),
     info: (id: string) => req<GitInfo>('GET', `/api/services/${enc(id)}/git`),
@@ -101,7 +108,29 @@ export const api = {
     action: (id: string, action: string, force = false) => req<string>('POST', `/api/containers/${enc(id)}/${action}`, { force }),
     logs: (id: string) => req<ProcState>('POST', `/api/containers/${enc(id)}/logs`),
     removeImage: (id: string, force = false) => req<string>('DELETE', `/api/containers/images/${enc(id)}${force ? '?force=1' : ''}`),
-    machine: (name: string, action: 'start' | 'stop') => req<string>('POST', `/api/containers/machine/${enc(name || '_default')}/${action}`)
+    machine: (name: string, action: 'start' | 'stop') => req<string>('POST', `/api/containers/machine/${enc(name || '_default')}/${action}`),
+    exec: (args: string[]) => req<ContainerExecResult>('POST', '/api/containers/exec', { args })
+  },
+  pubsub: {
+    info: () => req<PubSubInfo>('GET', '/api/pubsub/info'),
+    start: () => req<string>('POST', '/api/pubsub/start'),
+    stop: () => req<string>('POST', '/api/pubsub/stop'),
+    topics: () => req<PubSubTopic[]>('GET', '/api/pubsub/topics'),
+    createTopic: (name: string) => req<PubSubTopic>('POST', '/api/pubsub/topics', { name }),
+    deleteTopic: (name: string) => req<void>('DELETE', `/api/pubsub/topics/${enc(name)}`),
+    publish: (topic: string, data: string, attributes?: Record<string, string>) => req<{ messageId: string }>('POST', `/api/pubsub/topics/${enc(topic)}/publish`, { data, attributes }),
+    subscriptions: () => req<PubSubSubscription[]>('GET', '/api/pubsub/subscriptions'),
+    createSubscription: (name: string, topic: string) => req<PubSubSubscription>('POST', '/api/pubsub/subscriptions', { name, topic }),
+    deleteSubscription: (name: string) => req<void>('DELETE', `/api/pubsub/subscriptions/${enc(name)}`),
+    inbox: (name: string) => req<PubSubInbox>('GET', `/api/pubsub/subscriptions/${enc(name)}/inbox`),
+    poll: (name: string, max = 50) => req<PubSubInbox>('POST', `/api/pubsub/subscriptions/${enc(name)}/poll`, { max }),
+    markRead: (name: string, id?: string) => req<PubSubInbox>('POST', `/api/pubsub/subscriptions/${enc(name)}/read`, { id }),
+    clearInbox: (name: string) => req<PubSubInbox>('DELETE', `/api/pubsub/subscriptions/${enc(name)}/inbox`)
+  },
+  grafana: {
+    config: () => req<GrafanaSettings>('GET', '/api/grafana/config'),
+    test: (cfg?: Partial<GrafanaSettings>) => req<GrafanaTestResult>('POST', '/api/grafana/test', { cfg }),
+    logs: (o: { query?: string; limit?: number; sinceMinutes?: number; cfg?: Partial<GrafanaSettings> }) => req<GrafanaLogLine[]>('POST', '/api/grafana/logs', o)
   },
   http: (r: HttpRequest) => req<HttpResponse>('POST', '/api/http', r),
   openExternal: (url: string): Promise<void> => {

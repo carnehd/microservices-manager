@@ -52,18 +52,18 @@ export function KcAdminPanel({ running, fail, notify }: { running: boolean; fail
   if (!realms) {
     return (
       <div className="empty">
-        <p>Liga-te à Admin REST API com as credenciais definidas nas Definições.</p>
-        {!running && <p className="muted small">O Keycloak não foi arrancado por esta app — se estiver a correr noutro lado na porta configurada, a ligação funciona na mesma.</p>}
-        <button className="btn btn-primary" disabled={busy} onClick={connect}>{busy ? 'A ligar…' : 'Ligar'}</button>
+        <p>Connect to the Admin REST API with the credentials set in Settings.</p>
+        {!running && <p className="muted small">Keycloak was not started by this app — if it is running elsewhere on the configured port, the connection still works.</p>}
+        <button className="btn btn-primary" disabled={busy} onClick={connect}>{busy ? 'Connecting…' : 'Connect'}</button>
       </div>
     )
   }
 
   const createUser = (): Promise<void> => guard(async () => {
-    if (!newUser.username.trim()) throw new Error('Username obrigatório')
+    if (!newUser.username.trim()) throw new Error('Username required')
     await api.kcAdmin.createUser(realm, newUser)
     setNewUser(EMPTY_USER)
-    notify(`Utilizador ${newUser.username} criado`, 'success')
+    notify(`User ${newUser.username} created`, 'success')
     setUsers(await api.kcAdmin.users(realm, search))
   })
 
@@ -76,14 +76,14 @@ export function KcAdminPanel({ running, fail, notify }: { running: boolean; fail
       <div className="toolbar">
         <label className="inline">Realm
           <select className="input" value={realm} onChange={(e) => setRealm(e.target.value)}>
-            {realms.map((r) => <option key={r.id} value={r.realm}>{r.realm}{r.enabled ? '' : ' (desativado)'}</option>)}
+            {realms.map((r) => <option key={r.id} value={r.realm}>{r.realm}{r.enabled ? '' : ' (disabled)'}</option>)}
           </select>
         </label>
         <div className="tabs inline">
           <button className={tab === 'realms' ? 'active' : ''} onClick={() => setTab('realms')}>Realms</button>
           <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}>Clients</button>
-          <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Utilizadores</button>
-          <button className={tab === 'providers' ? 'active' : ''} onClick={() => setTab('providers')}>Providers carregados</button>
+          <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Users</button>
+          <button className={tab === 'providers' ? 'active' : ''} onClick={() => setTab('providers')}>Loaded providers</button>
         </div>
         <span className="grow" />
         <button className="btn btn-sm" disabled={busy} onClick={connect}>⟳ Realms</button>
@@ -101,11 +101,11 @@ export function KcAdminPanel({ running, fail, notify }: { running: boolean; fail
         <div className="config">
           <section>
             <div className="row">
-              <input className="input grow" placeholder="procurar…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && loadUsers()} />
-              <button className="btn btn-sm" disabled={busy} onClick={loadUsers}>Procurar</button>
+              <input className="input grow" placeholder="search…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && loadUsers()} />
+              <button className="btn btn-sm" disabled={busy} onClick={loadUsers}>Search</button>
             </div>
             <table className="grid">
-              <thead><tr><th>Username</th><th>Email</th><th>Nome</th><th>Ativo</th><th></th></tr></thead>
+              <thead><tr><th>Username</th><th>Email</th><th>Name</th><th>Enabled</th><th></th></tr></thead>
               <tbody>
                 {users.map((u) => (
                   <tr key={u.id}>
@@ -119,36 +119,36 @@ export function KcAdminPanel({ running, fail, notify }: { running: boolean; fail
                     <td className="cell-actions">
                       {pwFor?.id === u.id ? (
                         <>
-                          <input className="input" type="password" placeholder="nova password" value={pwFor.value} autoFocus
+                          <input className="input" type="password" placeholder="new password" value={pwFor.value} autoFocus
                             onChange={(e) => setPwFor({ id: u.id, value: e.target.value })}
                             onKeyDown={(e) => { if (e.key === 'Escape') setPwFor(null) }} />
                           <button className="btn btn-sm btn-primary" disabled={busy || !pwFor.value}
-                            onClick={() => guard(async () => { await api.kcAdmin.resetPassword(realm, u.id, pwFor.value); setPwFor(null); notify('Password alterada', 'success') })}>OK</button>
+                            onClick={() => guard(async () => { await api.kcAdmin.resetPassword(realm, u.id, pwFor.value); setPwFor(null); notify('Password changed', 'success') })}>OK</button>
                           <button className="btn btn-sm" onClick={() => setPwFor(null)}>✕</button>
                         </>
                       ) : (
                         <>
                           <button className="btn btn-sm" disabled={busy} onClick={() => setPwFor({ id: u.id, value: '' })}>Password</button>
                           <button className="btn btn-sm btn-danger" disabled={busy}
-                            onClick={() => { if (confirm(`Apagar o utilizador ${u.username}?`)) void guard(async () => { await api.kcAdmin.deleteUser(realm, u.id); setUsers(await api.kcAdmin.users(realm, search)) }) }}>Apagar</button>
+                            onClick={() => { if (confirm(`Delete the user ${u.username}?`)) void guard(async () => { await api.kcAdmin.deleteUser(realm, u.id); setUsers(await api.kcAdmin.users(realm, search)) }) }}>Delete</button>
                         </>
                       )}
                     </td>
                   </tr>
                 ))}
-                {!users.length && <tr><td colSpan={5} className="muted">Sem utilizadores.</td></tr>}
+                {!users.length && <tr><td colSpan={5} className="muted">No users.</td></tr>}
               </tbody>
             </table>
           </section>
           <section>
-            <h3>Novo utilizador</h3>
+            <h3>New user</h3>
             <div className="form form-row">
               <input className="input" placeholder="username *" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} />
               <input className="input" placeholder="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
-              <input className="input" placeholder="nome" value={newUser.firstName} onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })} />
-              <input className="input" placeholder="apelido" value={newUser.lastName} onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })} />
+              <input className="input" placeholder="first name" value={newUser.firstName} onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })} />
+              <input className="input" placeholder="last name" value={newUser.lastName} onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })} />
               <input className="input" type="password" placeholder="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
-              <button className="btn btn-primary" disabled={busy} onClick={createUser}>Criar</button>
+              <button className="btn btn-primary" disabled={busy} onClick={createUser}>Create</button>
             </div>
           </section>
         </div>
@@ -157,9 +157,9 @@ export function KcAdminPanel({ running, fail, notify }: { running: boolean; fail
       {tab === 'providers' && (
         <div className="config">
           <section>
-            <p className="muted small">Lista de <span className="mono">/admin/serverinfo</span> — confirma aqui se o teu SPI foi carregado (filtra pelo id do provider).</p>
+            <p className="muted small">List from <span className="mono">/admin/serverinfo</span> — check here whether your SPI was loaded (filter by the provider id).</p>
             <div className="row">
-              <input className="input grow" placeholder="filtrar por SPI ou provider id…" value={provFilter} onChange={(e) => setProvFilter(e.target.value)} />
+              <input className="input grow" placeholder="filter by SPI or provider id…" value={provFilter} onChange={(e) => setProvFilter(e.target.value)} />
               <button className="btn btn-sm" disabled={busy} onClick={loadProviders}>⟳</button>
             </div>
             <table className="grid">
@@ -168,7 +168,7 @@ export function KcAdminPanel({ running, fail, notify }: { running: boolean; fail
                 {shownProviders.map((p) => (
                   <tr key={p.spi}><td className="mono">{p.spi}</td><td className="mono small">{p.providers.join(', ')}</td></tr>
                 ))}
-                {!shownProviders.length && <tr><td colSpan={2} className="muted">Nada a mostrar.</td></tr>}
+                {!shownProviders.length && <tr><td colSpan={2} className="muted">Nothing to show.</td></tr>}
               </tbody>
             </table>
           </section>
@@ -200,14 +200,14 @@ function RealmsTab({
 
   const create = (): Promise<void> => guard(async () => {
     const realm = name.trim()
-    if (!realm) throw new Error('Nome do realm obrigatório')
+    if (!realm) throw new Error('Realm name required')
     const src = source.startsWith('realm:')
       ? ({ kind: 'realm', name: source.slice(6) } as const)
       : source.startsWith('file:')
         ? ({ kind: 'file', name: source.slice(5) } as const)
         : undefined
     await api.kcAdmin.createRealm({ realm, displayName: displayName.trim() || undefined, source: src })
-    notify(src ? `Realm ${realm} criado a partir de ${src.name}` : `Realm ${realm} criado`, 'success')
+    notify(src ? `Realm ${realm} created from ${src.name}` : `Realm ${realm} created`, 'success')
     setName('')
     setDisplayName('')
     await onChanged(realm)
@@ -216,10 +216,10 @@ function RealmsTab({
   /** Cria vários realms de uma vez a partir da mesma origem: "local, dev, sit" */
   const createMany = (): Promise<void> => guard(async () => {
     const names = name.split(/[,\s]+/).map((n) => n.trim()).filter(Boolean)
-    if (names.length < 2) throw new Error('Indica vários nomes separados por vírgula (ex.: local, dev, sit)')
+    if (names.length < 2) throw new Error('Enter several names separated by commas (e.g. local, dev, sit)')
     const src = source.startsWith('realm:') ? ({ kind: 'realm', name: source.slice(6) } as const) : source.startsWith('file:') ? ({ kind: 'file', name: source.slice(5) } as const) : undefined
     for (const realm of names) await api.kcAdmin.createRealm({ realm, displayName: displayName.trim() ? `${displayName.trim()} ${realm}` : undefined, source: src })
-    notify(`Realms criados: ${names.join(', ')}`, 'success')
+    notify(`Realms created: ${names.join(', ')}`, 'success')
     setName('')
     await onChanged(names[names.length - 1])
   })
@@ -229,9 +229,9 @@ function RealmsTab({
   return (
     <div className="config">
       <section>
-        <h3>Realms neste Keycloak</h3>
+        <h3>Realms in this Keycloak</h3>
         <table className="grid">
-          <thead><tr><th>Realm</th><th>Nome a mostrar</th><th>Ativo</th><th>Registo</th><th></th></tr></thead>
+          <thead><tr><th>Realm</th><th>Display name</th><th>Enabled</th><th>Registration</th><th></th></tr></thead>
           <tbody>
             {realms.map((r) => (
               <tr key={r.id}>
@@ -239,15 +239,15 @@ function RealmsTab({
                 <td>{r.displayName ?? ''}</td>
                 <td>{r.enabled ? '✓' : '✗'}</td>
                 <td>
-                  <input type="checkbox" checked={!!r.registrationAllowed} disabled={busy || r.realm === 'master'} title="Mostra o link Register na página de login do Keycloak"
+                  <input type="checkbox" checked={!!r.registrationAllowed} disabled={busy || r.realm === 'master'} title="Shows the Register link on the Keycloak login page"
                     onChange={(e) => guard(async () => { await api.kcAdmin.updateRealm(r.realm, { registrationAllowed: e.target.checked }); await onChanged(); })} />
                 </td>
                 <td className="cell-actions">
-                  <button className="btn btn-sm" disabled={busy} title="Exporta clients, roles e grupos (sem utilizadores) para keycloak-realms/ na pasta raiz"
-                    onClick={() => guard(async () => { const { file } = await api.kcAdmin.exportRealm(r.realm); notify(`Exportado para ${file}`, 'success'); await loadFiles() })}>Exportar JSON</button>
+                  <button className="btn btn-sm" disabled={busy} title="Exports clients, roles and groups (without users) to keycloak-realms/ in the root folder"
+                    onClick={() => guard(async () => { const { file } = await api.kcAdmin.exportRealm(r.realm); notify(`Exported to ${file}`, 'success'); await loadFiles() })}>Export JSON</button>
                   {r.realm !== 'master' && (
                     <button className="btn btn-sm btn-danger" disabled={busy}
-                      onClick={() => { if (confirm(`Apagar o realm ${r.realm} e tudo o que contém (clients, utilizadores…)?`)) void guard(async () => { await api.kcAdmin.deleteRealm(r.realm); notify(`Realm ${r.realm} apagado`, 'info'); await onChanged() }) }}>Apagar</button>
+                      onClick={() => { if (confirm(`Delete the realm ${r.realm} and everything it contains (clients, users…)?`)) void guard(async () => { await api.kcAdmin.deleteRealm(r.realm); notify(`Realm ${r.realm} deleted`, 'info'); await onChanged() }) }}>Delete</button>
                   )}
                 </td>
               </tr>
@@ -257,38 +257,38 @@ function RealmsTab({
       </section>
 
       <section>
-        <h3>Novo realm</h3>
+        <h3>New realm</h3>
         <div className="form">
           <div className="form-row">
             <label>
-              Nome (ou vários: local, dev, sit)
-              <input className="input mono" value={name} onChange={(e) => setName(e.target.value)} placeholder="exemplo-dev" onKeyDown={(e) => e.key === 'Enter' && (isMulti ? createMany() : create())} />
+              Name (or several: local, dev, sit)
+              <input className="input mono" value={name} onChange={(e) => setName(e.target.value)} placeholder="example-dev" onKeyDown={(e) => e.key === 'Enter' && (isMulti ? createMany() : create())} />
             </label>
             <label>
-              Nome a mostrar
-              <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Exemplo" />
+              Display name
+              <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Example" />
             </label>
             <label>
-              Configuração inicial
+              Initial configuration
               <select className="input" value={source} onChange={(e) => setSource(e.target.value)}>
-                <option value="">Vazio</option>
-                <optgroup label="Copiar de um realm existente">
+                <option value="">Empty</option>
+                <optgroup label="Copy from an existing realm">
                   {realms.map((r) => <option key={r.id} value={`realm:${r.realm}`}>{r.realm}</option>)}
                 </optgroup>
                 {files.length > 0 && (
-                  <optgroup label="Importar de keycloak-realms/">
+                  <optgroup label="Import from keycloak-realms/">
                     {files.map((f) => <option key={f} value={`file:${f}`}>{f}</option>)}
                   </optgroup>
                 )}
               </select>
             </label>
             <button className="btn btn-primary" disabled={busy || !name.trim()} onClick={isMulti ? createMany : create}>
-              {busy ? 'A criar…' : isMulti ? 'Criar todos' : 'Criar'}
+              {busy ? 'Creating…' : isMulti ? 'Create all' : 'Create'}
             </button>
           </div>
           <p className="muted small">
-            "Copiar de" duplica clients, roles, grupos, scopes e fluxos (não os utilizadores; os segredos dos clients confidenciais são regenerados).
-            As exportações ficam em <span className="mono">keycloak-realms/</span> na pasta raiz — versiona-as para recriar os realms noutra máquina.
+            "Copy from" duplicates clients, roles, groups, scopes and flows (not users; the secrets of confidential clients are regenerated).
+            Exports go to <span className="mono">keycloak-realms/</span> in the root folder — version them to recreate the realms on another machine.
           </p>
         </div>
       </section>
@@ -311,9 +311,9 @@ function ClientsTab({
   const split = (s: string): string[] => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean)
 
   const create = (): Promise<void> => guard(async () => {
-    if (!c.clientId.trim()) throw new Error('Client ID obrigatório')
+    if (!c.clientId.trim()) throw new Error('Client ID required')
     await api.kcAdmin.createClient(realm, { clientId: c.clientId.trim(), name: c.name, publicClient: c.publicClient, directAccessGrants: c.directAccessGrants, redirectUris: split(c.redirect), webOrigins: split(c.origins) })
-    notify(`Client ${c.clientId} criado em ${realm}`, 'success')
+    notify(`Client ${c.clientId} created in ${realm}`, 'success')
     setC({ ...c, clientId: '', name: '' })
     await reload()
   })
@@ -323,50 +323,50 @@ function ClientsTab({
     <div className="config">
       <section>
         <div className="row">
-          <h3 className="grow">Clients de <span className="mono">{realm}</span></h3>
-          <label className="check"><input type="checkbox" checked={showBuiltin} onChange={(e) => setShowBuiltin(e.target.checked)} /> mostrar os internos do Keycloak</label>
+          <h3 className="grow">Clients in <span className="mono">{realm}</span></h3>
+          <label className="check"><input type="checkbox" checked={showBuiltin} onChange={(e) => setShowBuiltin(e.target.checked)} /> show Keycloak built-ins</label>
         </div>
         <table className="grid">
-          <thead><tr><th>Client ID</th><th>Protocolo</th><th>Tipo</th><th>Root URL</th><th>Ativo</th><th></th></tr></thead>
+          <thead><tr><th>Client ID</th><th>Protocol</th><th>Type</th><th>Root URL</th><th>Enabled</th><th></th></tr></thead>
           <tbody>
             {shown.map((x) => (
               <tr key={x.id}>
                 <td className="mono">{x.clientId}</td>
                 <td>{x.protocol ?? ''}</td>
-                <td>{x.publicClient ? 'público' : 'confidencial'}</td>
+                <td>{x.publicClient ? 'public' : 'confidential'}</td>
                 <td className="mono small">{x.rootUrl ?? ''}</td>
                 <td>{x.enabled ? '✓' : '✗'}</td>
                 <td className="cell-actions">
                   {!BUILTIN_CLIENTS.has(x.clientId) && (
                     <button className="btn btn-sm btn-danger" disabled={busy}
-                      onClick={() => { if (confirm(`Apagar o client ${x.clientId}?`)) void guard(async () => { await api.kcAdmin.deleteClient(realm, x.id); await reload() }) }}>Apagar</button>
+                      onClick={() => { if (confirm(`Delete the client ${x.clientId}?`)) void guard(async () => { await api.kcAdmin.deleteClient(realm, x.id); await reload() }) }}>Delete</button>
                   )}
                 </td>
               </tr>
             ))}
-            {!shown.length && <tr><td colSpan={6} className="muted">Sem clients.</td></tr>}
+            {!shown.length && <tr><td colSpan={6} className="muted">No clients.</td></tr>}
           </tbody>
         </table>
       </section>
       <section>
-        <h3>Novo client</h3>
+        <h3>New client</h3>
         <div className="form">
           <div className="form-row">
-            <label>Client ID *<input className="input mono" value={c.clientId} onChange={(e) => setC({ ...c, clientId: e.target.value })} placeholder="exemplo-app" /></label>
-            <label>Nome<input className="input" value={c.name} onChange={(e) => setC({ ...c, name: e.target.value })} /></label>
-            <label>Tipo
+            <label>Client ID *<input className="input mono" value={c.clientId} onChange={(e) => setC({ ...c, clientId: e.target.value })} placeholder="example-app" /></label>
+            <label>Name<input className="input" value={c.name} onChange={(e) => setC({ ...c, name: e.target.value })} /></label>
+            <label>Type
               <select className="input" value={c.publicClient ? 'public' : 'conf'} onChange={(e) => setC({ ...c, publicClient: e.target.value === 'public' })}>
-                <option value="public">público (SPA / testes)</option>
-                <option value="conf">confidencial (com secret)</option>
+                <option value="public">public (SPA / testing)</option>
+                <option value="conf">confidential (with secret)</option>
               </select>
             </label>
             <label>Redirect URIs<input className="input mono" value={c.redirect} onChange={(e) => setC({ ...c, redirect: e.target.value })} placeholder="http://localhost:3000/*" /></label>
             <label>Web origins<input className="input mono" value={c.origins} onChange={(e) => setC({ ...c, origins: e.target.value })} /></label>
           </div>
           <div className="row">
-            <label className="check"><input type="checkbox" checked={c.directAccessGrants} onChange={(e) => setC({ ...c, directAccessGrants: e.target.checked })} /> Direct access grants (necessário para obter tokens com utilizador/password no separador Endpoints)</label>
+            <label className="check"><input type="checkbox" checked={c.directAccessGrants} onChange={(e) => setC({ ...c, directAccessGrants: e.target.checked })} /> Direct access grants (needed to obtain tokens with username/password in the Endpoints tab)</label>
             <span className="grow" />
-            <button className="btn btn-primary" disabled={busy || !c.clientId.trim()} onClick={create}>Criar client</button>
+            <button className="btn btn-primary" disabled={busy || !c.clientId.trim()} onClick={create}>Create client</button>
           </div>
         </div>
       </section>
