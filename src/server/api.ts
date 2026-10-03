@@ -203,6 +203,7 @@ function followKeycloakLogs(): ProcState {
 
 async function startKeycloak(recreate = false): Promise<ProcState> {
   const kc = getSettings().keycloak
+  const ps = getSettings().pubsub
   const { providersDir, dataDir: dDir } = kcDirs()
   await fs.mkdir(providersDir, { recursive: true })
   await fs.mkdir(dDir, { recursive: true })
@@ -215,7 +216,12 @@ async function startKeycloak(recreate = false): Promise<ProcState> {
       KC_HTTP_PORT: String(kc.httpPort),
       // KEYCLOAK_ADMIN* (≤ 25) e KC_BOOTSTRAP_ADMIN_* (≥ 26): usados só no primeiro arranque para criar o admin
       KEYCLOAK_ADMIN: kc.adminUser, KEYCLOAK_ADMIN_PASSWORD: kc.adminPassword,
-      KC_BOOTSTRAP_ADMIN_USERNAME: kc.adminUser, KC_BOOTSTRAP_ADMIN_PASSWORD: kc.adminPassword
+      KC_BOOTSTRAP_ADMIN_USERNAME: kc.adminUser, KC_BOOTSTRAP_ADMIN_PASSWORD: kc.adminPassword,
+      // Para SPIs que falam com o emulador Pub/Sub (ex. keycloak-pubsub-login-spi): do container
+      // o emulador (publicado no host) alcança-se por host.containers.internal:<porta-host>.
+      PUBSUB_EMULATOR_HOST: `host.containers.internal:${ps.port}`,
+      PUBSUB_PROJECT_ID: ps.projectId,
+      PUBSUB_LOGIN_TOPIC: 'login-events'
     },
     // keep-id: o utilizador keycloak (uid 1000) dentro do container é o teu utilizador no disco → escreve na H2 montada
     runArgs: ['--userns=keep-id:uid=1000,gid=1000'],
