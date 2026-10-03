@@ -28,6 +28,8 @@ export interface SrDbStatus {
   schemaExists: boolean
   /** tabelas existentes no schema (sem as do Liquibase) */
   tables: string[]
+  /** estado do container Postgres (para oferecer criar/arrancar quando não está acessível) */
+  container: { name: string; exists: boolean; running: boolean }
 }
 
 /** Dados de uma tabela (só leitura) para visualização na app. */

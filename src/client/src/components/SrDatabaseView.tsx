@@ -88,6 +88,26 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
     }
   }
 
+  // Cria (ou arranca) o container do Postgres quando não existe/não está a correr.
+  const startContainer = async () => {
+    setBusy('container')
+    try {
+      const msg = await api.db.start()
+      notify(msg || 'Postgres container ready', 'success')
+      // o Postgres pode demorar a aceitar ligações: faz poll ao estado até ficar pronto
+      let s = await api.srdb.status(svc.id)
+      for (let i = 0; i < 16 && !s.postgresReady; i++) {
+        await new Promise((r) => setTimeout(r, 500))
+        s = await api.srdb.status(svc.id)
+      }
+      setStatus(s)
+    } catch (e) {
+      fail(e)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const drop = async () => {
     if (!window.confirm(`Drop the database "${svc.srDatabase?.database}"? All data will be permanently lost.`)) return
     setBusy('drop')
@@ -154,7 +174,7 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
         {!status && <div className="muted">Checking…</div>}
         {status && (
           <>
-            <Check ok={status.postgresReady}>Postgres reachable</Check>
+            <Check ok={status.postgresReady}>Postgres reachable {status.container && <span className="muted">· container {status.container.name} {status.container.running ? 'running' : status.container.exists ? 'stopped' : 'does not exist'}</span>}</Check>
             <Check ok={status.databaseExists}>Database <span className="mono">{sr.database}</span> exists</Check>
             <Check ok={status.schemaExists}>Schema <span className="mono">{sr.schema}</span> exists</Check>
             <Check ok={status.tables.length > 0}>
@@ -163,6 +183,12 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
           </>
         )}
         <div className="srdb-actions">
+          {status && !status.postgresReady && (
+            <button className="btn btn-primary" disabled={busy !== null} onClick={() => void startContainer()}
+              title={`${status.container?.exists ? 'Start' : 'Create and start'} the Postgres container "${status.container?.name}" (image/port/credentials from Settings)`}>
+              {busy === 'container' ? 'Starting…' : status.container?.exists ? `▶ Start container ${status.container.name}` : `▶ Create container ${status.container?.name ?? ''}`}
+            </button>
+          )}
           <button className="btn btn-primary" disabled={busy !== null || !status?.postgresReady} onClick={() => create(false)}>
             {busy === 'create' ? 'Creating…' : 'Create database'}
           </button>

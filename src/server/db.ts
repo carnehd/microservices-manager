@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import type { DbInfo, DbServiceInfo, ServiceInfo, SrDbInfo, SrDbStatus, SrTableData } from '../shared/types'
-import { ensureContainer, listContainers } from './containers'
+import { containerState, ensureContainer, listContainers } from './containers'
 import { getSettings } from './settings'
 import { dataDir } from './settings'
 import { join } from 'path'
@@ -203,10 +203,13 @@ export async function createDatabaseManual(o: { db: string; user?: string; passw
 
 /** Estado da BD de um microserviço SR: Postgres pronto, base/schema existem, e tabelas já criadas. */
 export async function srDbStatus(spec: SrDbInfo): Promise<SrDbStatus> {
+  const pgName = getSettings().postgres.containerName
+  const cst = await containerState(cmd(), pgName).catch(() => ({ exists: false, running: false }))
+  const container = { name: pgName, exists: cst.exists, running: cst.running }
   const postgresReady = await ready()
-  if (!postgresReady) return { spec, postgresReady: false, databaseExists: false, schemaExists: false, tables: [] }
+  if (!postgresReady) return { spec, postgresReady: false, databaseExists: false, schemaExists: false, tables: [], container }
   if (!SR_NAME_RE.test(spec.database) || !SR_NAME_RE.test(spec.schema)) {
-    return { spec, postgresReady: true, databaseExists: false, schemaExists: false, tables: [] }
+    return { spec, postgresReady: true, databaseExists: false, schemaExists: false, tables: [], container }
   }
   const databaseExists = (await psql(`SELECT 1 FROM pg_database WHERE datname='${spec.database}'`)) === '1'
   let schemaExists = false
@@ -221,7 +224,7 @@ export async function srDbStatus(spec: SrDbInfo): Promise<SrDbStatus> {
       tables = out ? out.split('\n').map((s) => s.trim()).filter(Boolean) : []
     }
   }
-  return { spec, postgresReady, databaseExists, schemaExists, tables }
+  return { spec, postgresReady, databaseExists, schemaExists, tables, container }
 }
 
 /** Cria a BD de um serviço SR (database + schema; 1 superuser). As tabelas ficam para o Liquibase no arranque. */
