@@ -67,8 +67,8 @@ export function exampleFor(schema: Any, doc: Any, depth = 0): unknown {
         case 'date-time': return new Date().toISOString()
         case 'date': return new Date().toISOString().slice(0, 10)
         case 'uuid': return '00000000-0000-0000-0000-000000000000'
-        case 'email': return 'ana@exemplo.pt'
-        case 'uri': return 'https://exemplo.pt'
+        case 'email': return 'jane@example.com'
+        case 'uri': return 'https://example.com'
         default: return 'string'
       }
     default:
@@ -128,7 +128,7 @@ export function parseOpenApi(doc: Any): Operation[] {
         method: method.toUpperCase(),
         path,
         summary: op.summary ?? op.description,
-        tags: Array.isArray(op.tags) && op.tags.length ? op.tags : ['(sem tag)'],
+        tags: Array.isArray(op.tags) && op.tags.length ? op.tags : ['(no tag)'],
         params,
         bodyExample,
         bodyContentType

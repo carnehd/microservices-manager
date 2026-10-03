@@ -41,6 +41,62 @@ function toInt(v?: string): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
+/** Resolve o valor por omissão de um placeholder Spring "${VAR:default}" (o default pode ter ':', ex. jdbc url). */
+function placeholderDefault(v?: string): string | undefined {
+  if (v == null) return undefined
+  const m = /^\$\{[^:}]+:(.*)\}$/.exec(v.trim())
+  return m ? m[1] : v
+}
+
+/** Extrai o nome da base de uma jdbc url (…/<db>?params). */
+function dbNameFromJdbc(url?: string): string | undefined {
+  if (!url) return undefined
+  const m = /\/([^/?;#\s]+)(?:[?;#].*)?$/.exec(url.trim())
+  return m ? m[1] : undefined
+}
+
+function normalizeComposeEnv(e: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (Array.isArray(e)) {
+    for (const item of e) {
+      const s = String(item)
+      const i = s.indexOf('=')
+      if (i > 0) out[s.slice(0, i).trim()] = s.slice(i + 1).trim()
+    }
+  } else if (e && typeof e === 'object') {
+    for (const [k, v] of Object.entries(e as Record<string, unknown>)) out[k] = String(v)
+  }
+  return out
+}
+
+/** Porta HTTP a partir de "8100:8100" (ignora a de debug 8000). */
+function composeHttpPort(ports: unknown): number | undefined {
+  const list = asArray<unknown>(ports).map(String)
+  const hosts = list.map((p) => /^(\d+):/.exec(p.trim())?.[1]).filter((p): p is string => !!p)
+  const http = hosts.find((p) => p !== '8000') ?? hosts[0]
+  return http ? Number(http) : undefined
+}
+
+/** Lê o docker-compose do serviço e devolve o env do serviço aplicacional (o que tem DB_*) + porta. */
+async function readComposeDbEnv(dir: string): Promise<{ env: Record<string, string>; httpPort?: number } | null> {
+  for (const name of ['docker-compose.yaml', 'docker-compose.yml', 'compose.yaml', 'compose.yml']) {
+    const p = join(dir, name)
+    if (!existsSync(p)) continue
+    try {
+      const docs = parseAllDocuments(await fs.readFile(p, 'utf8'))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const services = (docs[0]?.toJS() as any)?.services ?? {}
+      for (const key of Object.keys(services)) {
+        const env = normalizeComposeEnv(services[key]?.environment)
+        if (env.DB_CONNECTION_STRING || env.DB_SCHEMA) return { env, httpPort: composeHttpPort(services[key]?.ports) }
+      }
+    } catch {
+      /* compose inválido: ignora */
+    }
+  }
+  return null
+}
+
 const posix = (p: string): string => p.split(sep).join('/')
 
 /** Nó da árvore de projetos: folha (um pom com código) ou agregador (packaging pom) com filhos. */
@@ -161,6 +217,7 @@ function collapse(node: Node, primary: ServiceInfo, leaves: ServiceInfo[], root:
     svc.contextPath = cfgLeaf.contextPath ?? primary.contextPath
     svc.datasource = cfgLeaf.datasource ?? primary.datasource
   }
+  svc.srDatabase = leaves.map((l) => l.srDatabase).find(Boolean)
   return svc
 }
 
@@ -261,6 +318,24 @@ async function analyzeProject(dir: string, root: string): Promise<{ leaf?: Servi
       driver: config['spring.datasource.driver-class-name']
     }
     if (ds.url || ds.username || ds.driver) info.datasource = ds
+
+    // Microserviço "SR": database/schema próprios + tabelas geridas por Liquibase.
+    // A config da BD vem por env vars (docker-compose) ou dos defaults dos placeholders em application.yaml.
+    const compose = await readComposeDbEnv(dir)
+    const liquibase =
+      !!config['spring.liquibase.change-log'] ||
+      deps.some((d) => d.a === 'liquibase-core') ||
+      existsSync(join(resources, 'db', 'changelog'))
+    const database = dbNameFromJdbc(compose?.env.DB_CONNECTION_STRING) ?? dbNameFromJdbc(placeholderDefault(config['spring.datasource.url']))
+    const schema =
+      compose?.env.DB_SCHEMA ??
+      placeholderDefault(config['spring.liquibase.default-schema']) ??
+      placeholderDefault(config['spring.jpa.properties.hibernate.default_schema'])
+    if (liquibase && database && schema) {
+      const httpPort = compose?.httpPort ?? toInt(placeholderDefault(config['server.port']))
+      info.srDatabase = { database, schema, httpPort, liquibase: true, source: compose ? 'docker-compose.yaml' : 'application.yaml' }
+      if (httpPort) info.port = httpPort
+    }
   }
   return { leaf: info }
 }

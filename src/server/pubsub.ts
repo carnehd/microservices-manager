@@ -1,0 +1,195 @@
+import type { PubSubInbox, PubSubInfo, PubSubMessage, PubSubSettings, PubSubStoredMessage, PubSubSubscription, PubSubTopic } from '../shared/types'
+import { containerState, engineInfo, ensureContainer } from './containers'
+import { getSettings } from './settings'
+
+const NAME_RE = /^[A-Za-z][A-Za-z0-9_.~%+-]{2,254}$/ // nomes de tópico/subscrição do Pub/Sub
+
+function cmd(): string {
+  return getSettings().containerCommand?.trim() || 'podman'
+}
+function cfg(): PubSubSettings {
+  return getSettings().pubsub
+}
+function baseUrl(p: PubSubSettings): string {
+  return `http://localhost:${p.port}/v1/projects/${encodeURIComponent(p.projectId)}`
+}
+
+/** Estado do emulador (motor de containers, container, portas e endereços para os microserviços). */
+export async function pubsubInfo(): Promise<PubSubInfo> {
+  const p = cfg()
+  const base: PubSubInfo = {
+    engineOk: false,
+    containerName: p.containerName,
+    image: p.image,
+    port: p.port,
+    projectId: p.projectId,
+    exists: false,
+    running: false,
+    emulatorHostLocal: `localhost:${p.port}`,
+    emulatorHostContainer: `${p.containerName}:8085`
+  }
+  try {
+    const engine = await engineInfo(cmd())
+    base.engineOk = engine.available
+    if (!engine.available) {
+      base.error = engine.error ?? 'container engine unavailable'
+      return base
+    }
+    const st = await containerState(cmd(), p.containerName)
+    base.exists = st.exists
+    base.running = st.running
+  } catch (e) {
+    base.error = e instanceof Error ? e.message : String(e)
+  }
+  return base
+}
+
+/** Arranca (ou cria) o container do emulador Pub/Sub. */
+export async function startPubsub(): Promise<string> {
+  const p = cfg()
+  return ensureContainer(cmd(), {
+    name: p.containerName,
+    image: p.image,
+    ports: [`${p.port}:8085`],
+    args: ['gcloud', 'beta', 'emulators', 'pubsub', 'start', '--host-port=0.0.0.0:8085', `--project=${p.projectId}`]
+  })
+}
+
+async function emu(path: string, init?: RequestInit): Promise<unknown> {
+  const p = cfg()
+  let res: Response
+  try {
+    res = await fetch(`${baseUrl(p)}${path}`, init)
+  } catch (e) {
+    throw new Error(`the emulator is not responding at localhost:${p.port} — start Pub/Sub first (${e instanceof Error ? e.message : String(e)})`)
+  }
+  const text = await res.text()
+  if (!res.ok) throw new Error(`Pub/Sub responded ${res.status}${text ? ` — ${text.slice(0, 200)}` : ''}`)
+  return text ? JSON.parse(text) : null
+}
+
+function shortName(full: string): string {
+  return full.split('/').pop() ?? full
+}
+
+export async function listTopics(): Promise<PubSubTopic[]> {
+  const d = (await emu('/topics')) as { topics?: Array<{ name: string }> }
+  return (d?.topics ?? []).map((t) => ({ name: shortName(t.name) }))
+}
+
+export async function createTopic(name: string): Promise<PubSubTopic> {
+  if (!NAME_RE.test(name)) throw new Error(`Invalid topic name: "${name}"`)
+  const d = (await emu(`/topics/${encodeURIComponent(name)}`, { method: 'PUT' })) as { name: string }
+  return { name: shortName(d.name) }
+}
+
+export async function deleteTopic(name: string): Promise<void> {
+  if (!NAME_RE.test(name)) throw new Error(`Invalid topic name: "${name}"`)
+  await emu(`/topics/${encodeURIComponent(name)}`, { method: 'DELETE' })
+}
+
+/** Publica uma mensagem (de teste) num tópico; o payload é enviado em base64 para o emulador. */
+export async function publishMessage(topic: string, data: string, attributes?: Record<string, string>): Promise<{ messageId: string }> {
+  if (!NAME_RE.test(topic)) throw new Error(`Invalid topic name: "${topic}"`)
+  const message: { data: string; attributes?: Record<string, string> } = { data: Buffer.from(data, 'utf8').toString('base64') }
+  if (attributes && Object.keys(attributes).length) message.attributes = attributes
+  const d = (await emu(`/topics/${encodeURIComponent(topic)}:publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [message] })
+  })) as { messageIds?: string[] }
+  return { messageId: d?.messageIds?.[0] ?? '' }
+}
+
+export async function listSubscriptions(): Promise<PubSubSubscription[]> {
+  const d = (await emu('/subscriptions')) as { subscriptions?: Array<{ name: string; topic: string }> }
+  return (d?.subscriptions ?? []).map((s) => ({ name: shortName(s.name), topic: shortName(s.topic) }))
+}
+
+export async function createSubscription(name: string, topic: string): Promise<PubSubSubscription> {
+  if (!NAME_RE.test(name)) throw new Error(`Invalid subscription name: "${name}"`)
+  if (!NAME_RE.test(topic)) throw new Error(`Invalid topic name: "${topic}"`)
+  const p = cfg()
+  const body = JSON.stringify({ topic: `projects/${p.projectId}/topics/${topic}` })
+  const d = (await emu(`/subscriptions/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body
+  })) as { name: string; topic: string }
+  return { name: shortName(d.name), topic: shortName(d.topic) }
+}
+
+export async function deleteSubscription(name: string): Promise<void> {
+  if (!NAME_RE.test(name)) throw new Error(`Invalid subscription name: "${name}"`)
+  await emu(`/subscriptions/${encodeURIComponent(name)}`, { method: 'DELETE' })
+}
+
+// Histórico (inbox) por subscrição, em memória. A app faz pull+ack ao emulador e guarda aqui,
+// para poderes ver SEMPRE todas as mensagens e o estado lida/não lida (perde-se se a app reiniciar).
+const inbox = new Map<string, PubSubStoredMessage[]>()
+function boxOf(sub: string): PubSubStoredMessage[] {
+  let b = inbox.get(sub)
+  if (!b) {
+    b = []
+    inbox.set(sub, b)
+  }
+  return b
+}
+function snapshot(sub: string): PubSubInbox {
+  const box = boxOf(sub)
+  return { messages: [...box], unread: box.filter((m) => !m.read).length }
+}
+
+/** Vai buscar as mensagens novas do emulador (ack) e junta-as ao histórico como "não lidas". */
+export async function pollInbox(subscription: string, max = 50): Promise<PubSubInbox> {
+  const fresh = await pullMessages(subscription, max)
+  const box = boxOf(subscription)
+  const seen = new Set(box.map((m) => m.id))
+  const now = new Date().toISOString()
+  for (const m of fresh) {
+    const id = m.messageId || `${Date.now()}-${box.length}-${Math.random().toString(36).slice(2, 8)}`
+    if (seen.has(id)) continue
+    box.push({ ...m, id, read: false, receivedAt: now })
+    seen.add(id)
+  }
+  return snapshot(subscription)
+}
+
+export function getInbox(subscription: string): PubSubInbox {
+  return snapshot(subscription)
+}
+export function markInboxRead(subscription: string, id?: string): PubSubInbox {
+  for (const m of boxOf(subscription)) if (!id || m.id === id) m.read = true
+  return snapshot(subscription)
+}
+export function clearInbox(subscription: string): PubSubInbox {
+  inbox.set(subscription, [])
+  return snapshot(subscription)
+}
+
+/** Lê (pull) as mensagens de uma subscrição e confirma-as (ack), devolvendo o payload descodificado. */
+export async function pullMessages(subscription: string, max = 20): Promise<PubSubMessage[]> {
+  if (!NAME_RE.test(subscription)) throw new Error(`Invalid subscription name: "${subscription}"`)
+  const n = Math.min(Math.max(max, 1), 100)
+  const sub = encodeURIComponent(subscription)
+  const pull = (await emu(`/subscriptions/${sub}:pull`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ maxMessages: n, returnImmediately: true })
+  })) as { receivedMessages?: Array<{ ackId?: string; message?: { data?: string; attributes?: Record<string, string>; messageId?: string; publishTime?: string } }> }
+  const received = pull?.receivedMessages ?? []
+  const ackIds = received.map((r) => r.ackId).filter((a): a is string => !!a)
+  if (ackIds.length) {
+    await emu(`/subscriptions/${sub}:acknowledge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ackIds })
+    })
+  }
+  return received.map((r) => ({
+    data: r.message?.data ? Buffer.from(r.message.data, 'base64').toString('utf8') : '',
+    attributes: r.message?.attributes ?? {},
+    messageId: r.message?.messageId ?? '',
+    publishTime: r.message?.publishTime ?? ''
+  }))
+}

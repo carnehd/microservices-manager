@@ -39,7 +39,7 @@ export function DatabaseView({
     try {
       const r = await fn()
       if (done) notify(done, 'success')
-      else if (Array.isArray(r)) notify(r.join(' · ') || 'feito', 'success')
+      else if (Array.isArray(r)) notify(r.join(' · ') || 'done', 'success')
       await refresh()
     } catch (e) {
       fail(e)
@@ -69,25 +69,25 @@ export function DatabaseView({
     <main className="service">
       <div className="svc-header">
         <div className="grow">
-          <h2>Base de dados <Badge tone={ready ? 'green' : 'red'}>{ready ? 'pronta' : ct?.running ? 'a arrancar' : 'sem ligação'}</Badge></h2>
+          <h2>Database <Badge tone={ready ? 'green' : 'red'}>{ready ? 'ready' : ct?.running ? 'starting' : 'no connection'}</Badge></h2>
           <div className="muted small">
-            {info ? <>container <b>{ct?.name}</b> ({pg.superUser}@…:{pg.port}) · {ct?.running ? 'a correr' : ct?.exists ? 'parado' : 'não existe'}{ready ? ` · ${dbs.length} bases` : ''}</> : 'a ligar…'}
+            {info ? <>container <b>{ct?.name}</b> ({pg.superUser}@…:{pg.port}) · {ct?.running ? 'running' : ct?.exists ? 'stopped' : 'does not exist'}{ready ? ` · ${dbs.length} databases` : ''}</> : 'connecting…'}
             {info?.engineError && <span className="text-error"> · {info.engineError}</span>}
           </div>
         </div>
       </div>
 
       <div className="actions">
-        {!ct?.running && <button className="btn btn-primary" disabled={!!busy} onClick={() => act('start', api.db.start, 'Postgres iniciado')}>{busy === 'start' ? 'A arrancar…' : ct?.exists ? '▶ Arrancar container' : '▶ Criar e arrancar Postgres'}</button>}
-        <button className="btn" disabled={!!busy} onClick={refresh}>⟳ Atualizar</button>
+        {!ct?.running && <button className="btn btn-primary" disabled={!!busy} onClick={() => act('start', api.db.start, 'Postgres started')}>{busy === 'start' ? 'Starting…' : ct?.exists ? '▶ Start container' : '▶ Create and start Postgres'}</button>}
+        <button className="btn" disabled={!!busy} onClick={refresh}>⟳ Refresh</button>
       </div>
       {info && info.candidates.length > 0 && (
         <div className="actions">
-          <span className="muted small">Containers Postgres encontrados:</span>
+          <span className="muted small">Postgres containers found:</span>
           {info.candidates.map((c) => (
             <span key={c.name} className="row" style={{ gap: 6 }}>
-              <span className="mono small">{c.name} <span className="muted">({c.image}{c.running ? '' : ', parado'})</span></span>
-              {c.name !== pg.containerName && <button className="btn btn-sm" disabled={!!busy} onClick={() => onSaveSettings({ postgres: { ...pg, containerName: c.name } }).then(() => refresh())} title="Usar este container existente">Usar este</button>}
+              <span className="mono small">{c.name} <span className="muted">({c.image}{c.running ? '' : ', stopped'})</span></span>
+              {c.name !== pg.containerName && <button className="btn btn-sm" disabled={!!busy} onClick={() => onSaveSettings({ postgres: { ...pg, containerName: c.name } }).then(() => refresh())} title="Use this existing container">Use this</button>}
             </span>
           ))}
         </div>
@@ -96,37 +96,37 @@ export function DatabaseView({
       <div className="tab-body">
         {!ready ? (
           <div className="empty">
-            <p>Sem ligação ao Postgres.</p>
-            <p className="muted small">Arranca o container acima, ou em Definições → Base de dados indica o nome de um container já existente, o superutilizador e a password.</p>
+            <p>No connection to Postgres.</p>
+            <p className="muted small">Start the container above, or in Settings → Database enter the name of an existing container, the superuser and the password.</p>
           </div>
         ) : (
           <div className="config">
             <section>
-              <h3>Nova base de dados</h3>
+              <h3>New database</h3>
               <div className="form">
                 <div className="form-row">
-                  <label>Nome da base *<input className="input mono" value={form.db} onChange={(e) => setForm({ ...form, db: e.target.value })} placeholder="ex.: order_db" /></label>
-                  <label>Utilizador (dono)<input className="input mono" value={form.user} onChange={(e) => setForm({ ...form, user: e.target.value })} placeholder={pg.superUser} /></label>
+                  <label>Database name *<input className="input mono" value={form.db} onChange={(e) => setForm({ ...form, db: e.target.value })} placeholder="e.g. order_db" /></label>
+                  <label>User (owner)<input className="input mono" value={form.user} onChange={(e) => setForm({ ...form, user: e.target.value })} placeholder={pg.superUser} /></label>
                   <label>Password<input className="input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></label>
-                  <label className="check" style={{ alignSelf: 'end', paddingBottom: 6 }}><input type="checkbox" checked={form.createUser} onChange={(e) => setForm({ ...form, createUser: e.target.checked })} /> criar utilizador</label>
+                  <label className="check" style={{ alignSelf: 'end', paddingBottom: 6 }}><input type="checkbox" checked={form.createUser} onChange={(e) => setForm({ ...form, createUser: e.target.checked })} /> create user</label>
                   <button className="btn btn-primary" style={{ alignSelf: 'end' }} disabled={!!busy || !form.db.trim()}
-                    onClick={() => act('create', () => api.db.createManual({ db: form.db.trim(), user: form.user.trim() || undefined, password: form.password || undefined, createUser: form.createUser })).then(() => setForm({ db: '', user: '', password: '', createUser: true }))}>Criar base</button>
+                    onClick={() => act('create', () => api.db.createManual({ db: form.db.trim(), user: form.user.trim() || undefined, password: form.password || undefined, createUser: form.createUser })).then(() => setForm({ db: '', user: '', password: '', createUser: true }))}>Create database</button>
                 </div>
-                <p className="muted small">Cria a base (e o utilizador/dono, se marcado) no container. Para criar tabelas, usa a consola SQL abaixo.</p>
+                <p className="muted small">Creates the database (and the user/owner, if checked) in the container. To create tables, use the SQL console below.</p>
               </div>
             </section>
 
             <section>
               <div className="row">
-                <h3 className="grow">Bases de dados ({dbs.length})</h3>
+                <h3 className="grow">Databases ({dbs.length})</h3>
               </div>
-              <div className="chips-list">{dbs.map((d) => <button key={d} className={`chip${d === sqlDb ? ' chip-sel' : ''}`} onClick={() => setSqlDb(d)} title="usar na consola SQL">{d}</button>)}</div>
+              <div className="chips-list">{dbs.map((d) => <button key={d} className={`chip${d === sqlDb ? ' chip-sel' : ''}`} onClick={() => setSqlDb(d)} title="use in the SQL console">{d}</button>)}</div>
             </section>
 
             <section>
               <div className="row">
-                <h3 className="grow">Consola SQL</h3>
-                <label className="inline">Base
+                <h3 className="grow">SQL console</h3>
+                <label className="inline">Database
                   <select className="input" value={sqlDb} onChange={(e) => { setSqlDb(e.target.value); setOut(null) }}>
                     {dbs.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
@@ -134,9 +134,9 @@ export function DatabaseView({
               </div>
               <textarea className="input mono" rows={7} value={sql} onChange={(e) => setSql(e.target.value)} placeholder={'CREATE TABLE cliente (\n  id serial PRIMARY KEY,\n  nome text NOT NULL\n);\nINSERT INTO cliente (nome) VALUES (\'Ana\');\nSELECT * FROM cliente;'} />
               <div className="row">
-                <span className="muted small">Executado como {pg.superUser} na base {sqlDb}</span>
+                <span className="muted small">Run as {pg.superUser} on database {sqlDb}</span>
                 <span className="grow" />
-                <button className="btn btn-primary" disabled={!!busy || !sql.trim() || !sqlDb} onClick={runSql}>{busy === 'sql' ? 'A executar…' : 'Executar SQL'}</button>
+                <button className="btn btn-primary" disabled={!!busy || !sql.trim() || !sqlDb} onClick={runSql}>{busy === 'sql' ? 'Running…' : 'Run SQL'}</button>
               </div>
               {out && <pre className={`resp-body${out.error ? ' sql-error' : ''}`}>{out.output}</pre>}
             </section>

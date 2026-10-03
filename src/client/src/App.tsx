@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AppSettings, GitSummary, ProcState, ScanResult, ServiceSettings, StartMode } from '../../shared/types'
 import { api } from './api'
 import { useLogs } from './hooks'
@@ -6,6 +6,8 @@ import { ContainersView } from './components/ContainersView'
 import { KeycloakView } from './components/KeycloakView'
 import { DiagnosticsView } from './components/DiagnosticsView'
 import { DatabaseView } from './components/DatabaseView'
+import { GrafanaView } from './components/GrafanaView'
+import { PubSubView } from './components/PubSubView'
 import { MapView } from './components/MapView'
 import { RedisView } from './components/RedisView'
 import { ServiceView } from './components/ServiceView'
@@ -15,7 +17,7 @@ import { Toast, type ToastMsg } from './components/Toast'
 import { FolderPicker } from './components/FolderPicker'
 import { StatusDot, isActive } from './components/common'
 
-type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics' | 'map' | 'db'
+type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics' | 'map' | 'db' | 'grafana' | 'pubsub'
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -55,7 +57,7 @@ export default function App() {
     try {
       const r = await api.scan(root)
       setScan(r)
-      if (!r.services.length) notify('Nenhum projeto Maven encontrado nesta pasta', 'info')
+      if (!r.services.length) notify('No Maven project found in this folder', 'info')
     } catch (e) {
       fail(e)
     } finally {
@@ -140,8 +142,18 @@ export default function App() {
   const saveServiceSettings = useCallback(async (id: string, ss: ServiceSettings, quiet = false) => {
     if (!settings) return
     await saveSettings({ services: { ...settings.services, [id]: ss } })
-    if (!quiet) notify('Definições do serviço guardadas', 'success')
+    if (!quiet) notify('Service settings saved', 'success')
   }, [settings, saveSettings, notify])
+
+  const favorites = useMemo(
+    () => new Set(Object.entries(settings?.services ?? {}).filter(([, ss]) => ss?.favorite).map(([id]) => id)),
+    [settings]
+  )
+  const toggleFavorite = useCallback(async (id: string) => {
+    if (!settings) return
+    const cur = settings.services[id] ?? {}
+    await saveServiceSettings(id, { ...cur, favorite: !cur.favorite }, true)
+  }, [settings, saveServiceSettings])
 
   const pickRoot = async (): Promise<void> => {
     const dir = await pickFolder(settings?.rootFolder)
@@ -162,8 +174,8 @@ export default function App() {
   const startWithDeps = async (id: string, mode: StartMode): Promise<void> => {
     try {
       const r = await api.startWithDeps(id, mode)
-      const parts = [r.started.length ? `arrancados: ${r.started.join(', ')}` : '', r.skipped.length ? `já a correr: ${r.skipped.filter((x) => x !== id).join(', ')}` : '', r.failed.length ? `falharam: ${r.failed.join(', ')}` : '']
-      notify(parts.filter(Boolean).join(' · ') || 'sem dependências a arrancar', r.failed.length ? 'error' : 'success')
+      const parts = [r.started.length ? `started: ${r.started.join(', ')}` : '', r.skipped.length ? `already running: ${r.skipped.filter((x) => x !== id).join(', ')}` : '', r.failed.length ? `failed: ${r.failed.join(', ')}` : '']
+      notify(parts.filter(Boolean).join(' · ') || 'no dependencies to start', r.failed.length ? 'error' : 'success')
     } catch (e) {
       fail(e)
     }
@@ -182,7 +194,7 @@ export default function App() {
     for (const s of scan?.services ?? []) if (isActive(states[s.id])) await stop(s.id)
   }
 
-  if (!settings) return <div className="loading">A carregar…</div>
+  if (!settings) return <div className="loading">Loading…</div>
 
   const selected = scan?.services.find((s) => s.id === selectedId) ?? null
   const runningCount = Object.values(states).filter(isActive).length
@@ -192,36 +204,38 @@ export default function App() {
       <header className="topbar">
         <nav className="nav">
           <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>
-            Serviços {runningCount > 0 && <span className="count">{runningCount}</span>}
+            Services {runningCount > 0 && <span className="count">{runningCount}</span>}
           </button>
-          <button className={view === 'map' ? 'active' : ''} onClick={() => setView('map')}>Mapa</button>
+          <button className={view === 'map' ? 'active' : ''} onClick={() => setView('map')}>Map</button>
           <button className={view === 'keycloak' ? 'active' : ''} onClick={() => setView('keycloak')}>
             <StatusDot status={states.keycloak?.status} /> Keycloak
           </button>
           <button className={view === 'containers' ? 'active' : ''} onClick={() => setView('containers')}>Containers</button>
-          <button className={view === 'db' ? 'active' : ''} onClick={() => setView('db')}>BD</button>
+          <button className={view === 'db' ? 'active' : ''} onClick={() => setView('db')}>Database</button>
           <button className={view === 'redis' ? 'active' : ''} onClick={() => setView('redis')}>Redis</button>
-          <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Definições</button>
-          <button className={view === 'diagnostics' ? 'active' : ''} onClick={() => setView('diagnostics')}>Diagnóstico</button>
+          <button className={view === 'pubsub' ? 'active' : ''} onClick={() => setView('pubsub')}>Pub/Sub</button>
+          <button className={view === 'grafana' ? 'active' : ''} onClick={() => setView('grafana')}>Logs (Grafana)</button>
+          <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Settings</button>
+          <button className={view === 'diagnostics' ? 'active' : ''} onClick={() => setView('diagnostics')}>Diagnostics</button>
         </nav>
         <span className="grow" />
-        <button className="btn btn-sm btn-ghost" title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+        <button className="btn btn-sm btn-ghost" title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>
-        <button className="btn btn-ghost mono small ellipsis root-path" title="Escolher pasta raiz" onClick={pickRoot}>
-          {settings.rootFolder ?? 'Escolher pasta…'}
+        <button className="btn btn-ghost mono small ellipsis root-path" title="Choose root folder" onClick={pickRoot}>
+          {settings.rootFolder ?? 'Choose folder…'}
         </button>
         <button className="btn btn-sm" disabled={scanning || !settings.rootFolder} onClick={() => rescan()}>
-          {scanning ? 'A analisar…' : '⟳ Rescan'}
+          {scanning ? 'Scanning…' : '⟳ Rescan'}
         </button>
-        <button className="btn btn-sm btn-primary" disabled={!scan?.services.length} onClick={startAll}>▶ Arrancar todos</button>
-        <button className="btn btn-sm btn-danger" disabled={runningCount === 0} onClick={stopAll}>■ Parar todos</button>
+        <button className="btn btn-sm btn-primary" disabled={!scan?.services.length} onClick={startAll}>▶ Start all</button>
+        <button className="btn btn-sm btn-danger" disabled={runningCount === 0} onClick={stopAll}>■ Stop all</button>
       </header>
 
       <div className="body">
         {view === 'services' && (
           <>
-            <Sidebar scan={scan} states={states} gitSummary={gitSummary} kcProviders={kcProviders} selectedId={selectedId} onSelect={setSelectedId} />
+            <Sidebar scan={scan} states={states} gitSummary={gitSummary} kcProviders={kcProviders} favorites={favorites} selectedId={selectedId} onSelect={setSelectedId} onToggleFavorite={toggleFavorite} />
             {selected ? (
               <ServiceView
                 key={selected.id}
@@ -242,10 +256,10 @@ export default function App() {
             ) : (
               <div className="empty grow">
                 {scan?.services.length
-                  ? 'Seleciona um serviço na lista.'
+                  ? 'Select a service from the list.'
                   : settings.rootFolder
-                    ? scanning ? 'A analisar a pasta…' : 'Nenhum projeto encontrado. Verifica a pasta raiz nas Definições.'
-                    : 'Escolhe a pasta que contém os microserviços.'}
+                    ? scanning ? 'Scanning the folder…' : 'No project found. Check the root folder in Settings.'
+                    : 'Choose the folder containing the microservices.'}
               </div>
             )}
           </>
@@ -256,6 +270,8 @@ export default function App() {
         {view === 'containers' && <ContainersView logs={logs} states={states} notify={notify} fail={fail} />}
         {view === 'db' && <DatabaseView settings={settings} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
         {view === 'redis' && <RedisView notify={notify} fail={fail} />}
+        {view === 'grafana' && <GrafanaView settings={settings} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
+        {view === 'pubsub' && <PubSubView settings={settings} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
         {view === 'map' && <MapView states={states} onSelect={(id) => { setSelectedId(id); setView('services') }} fail={fail} />}
         {view === 'diagnostics' && <DiagnosticsView fail={fail} notify={notify} />}
         {view === 'settings' && <SettingsView settings={settings} scan={scan} onSave={saveSettings} onRescan={() => rescan()} pickFolder={pickFolder} notify={notify} />}

@@ -89,37 +89,37 @@ export function ContainersView({
         <div className="grow">
           <h2>Containers <Badge tone={engine?.available && !engine.error ? 'green' : 'red'}>{engine?.command ?? '…'}</Badge></h2>
           <div className="muted small">
-            {engine === null && 'a verificar o motor…'}
+            {engine === null && 'checking the engine…'}
             {engine && !engine.available && <span className="text-error">{engine.error}</span>}
             {engine?.available && (
               <>
-                cliente {engine.clientVersion ?? '?'}{engine.serverVersion ? ` · servidor ${engine.serverVersion}` : ''}
-                {machine && <> · máquina <b>{machine.name}</b> {machine.running ? 'a correr' : machine.starting ? 'a arrancar' : 'parada'}{machine.lastUp && !machine.running ? ` (última vez: ${machine.lastUp})` : ''}</>}
+                client {engine.clientVersion ?? '?'}{engine.serverVersion ? ` · server ${engine.serverVersion}` : ''}
+                {machine && <> · machine <b>{machine.name}</b> {machine.running ? 'running' : machine.starting ? 'starting' : 'stopped'}{machine.lastUp && !machine.running ? ` (last up: ${machine.lastUp})` : ''}</>}
                 {engine.error && <span className="text-error"> · {engine.error}</span>}
               </>
             )}
-            {containers && <> · {running} a correr de {containers.length}</>}
+            {containers && <> · {running} running of {containers.length}</>}
           </div>
         </div>
       </div>
 
       <div className="actions">
         {machine && (machineDown ? (
-          <button className="btn btn-primary" disabled={!!busy} onClick={() => act('machine', () => api.containers.machine(machine.name, 'start'), `Máquina ${machine.name} arrancada`)}>
-            {busy === 'machine' ? 'A arrancar a máquina…' : `▶ Arrancar máquina ${machine.name}`}
+          <button className="btn btn-primary" disabled={!!busy} onClick={() => act('machine', () => api.containers.machine(machine.name, 'start'), `Machine ${machine.name} started`)}>
+            {busy === 'machine' ? 'Starting the machine…' : `▶ Start machine ${machine.name}`}
           </button>
         ) : (
-          <button className="btn" disabled={!!busy} onClick={() => act('machine', () => api.containers.machine(machine.name, 'stop'), `Máquina ${machine.name} parada`)}>■ Parar máquina</button>
+          <button className="btn" disabled={!!busy} onClick={() => act('machine', () => api.containers.machine(machine.name, 'stop'), `Machine ${machine.name} stopped`)}>■ Stop machine</button>
         ))}
-        <button className="btn" disabled={!!busy} onClick={() => { void refresh(); void refreshEngine() }}>⟳ Atualizar</button>
-        <label className="check"><input type="checkbox" checked={onlyRunning} onChange={(e) => setOnlyRunning(e.target.checked)} /> só a correr</label>
+        <button className="btn" disabled={!!busy} onClick={() => { void refresh(); void refreshEngine() }}>⟳ Refresh</button>
+        <label className="check"><input type="checkbox" checked={onlyRunning} onChange={(e) => setOnlyRunning(e.target.checked)} /> only running</label>
         <span className="grow" />
-        <span className="muted small">atualiza a cada {REFRESH_MS / 1000} s</span>
+        <span className="muted small">refreshes every {REFRESH_MS / 1000} s</span>
       </div>
 
       <div className="tabs">
         <button className={tab === 'containers' ? 'active' : ''} onClick={() => setTab('containers')}>Containers {containers ? <span className="count">{running}</span> : null}</button>
-        <button className={tab === 'images' ? 'active' : ''} onClick={() => setTab('images')}>Imagens {images ? <span className="count">{images.length}</span> : null}</button>
+        <button className={tab === 'images' ? 'active' : ''} onClick={() => setTab('images')}>Images {images ? <span className="count">{images.length}</span> : null}</button>
         <button className={tab === 'logs' ? 'active' : ''} disabled={!logTarget} onClick={() => setTab('logs')}>Logs{logTarget ? `: ${logTarget}` : ''}</button>
       </div>
 
@@ -127,7 +127,7 @@ export function ContainersView({
         {error && tab !== 'logs' && (
           <div className="pad text-error small">
             {error}
-            {machineDown && <> — a máquina do Podman está parada; usa "Arrancar máquina".</>}
+            {machineDown && <> — the Podman machine is stopped; use "Start machine".</>}
           </div>
         )}
 
@@ -135,7 +135,7 @@ export function ContainersView({
           <div className="config">
             <section>
               <table className="grid">
-                <thead><tr><th></th><th>Nome</th><th>Imagem</th><th>Estado</th><th>Portas</th><th>Criado</th><th></th></tr></thead>
+                <thead><tr><th></th><th>Name</th><th>Image</th><th>State</th><th>Ports</th><th>Created</th><th></th></tr></thead>
                 <tbody>
                   {shown.map((c) => {
                     const up = c.state === 'running'
@@ -150,21 +150,21 @@ export function ContainersView({
                         <td className="cell-actions">
                           {up ? (
                             <>
-                              <button className="btn btn-sm" disabled={!!busy} onClick={() => act(c.id, () => api.containers.action(c.name, 'restart'), `${c.name} reiniciado`)}>⟳</button>
-                              <button className="btn btn-sm btn-danger" disabled={!!busy} onClick={() => act(c.id, () => api.containers.action(c.name, 'stop'), `${c.name} parado`)}>■ Parar</button>
+                              <button className="btn btn-sm" disabled={!!busy} onClick={() => act(c.id, () => api.containers.action(c.name, 'restart'), `${c.name} restarted`)}>⟳</button>
+                              <button className="btn btn-sm btn-danger" disabled={!!busy} onClick={() => act(c.id, () => api.containers.action(c.name, 'stop'), `${c.name} stopped`)}>■ Stop</button>
                             </>
                           ) : (
-                            <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => act(c.id, () => api.containers.action(c.name, 'start'), `${c.name} iniciado`)}>▶ Iniciar</button>
+                            <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => act(c.id, () => api.containers.action(c.name, 'start'), `${c.name} started`)}>▶ Start</button>
                           )}
                           <button className="btn btn-sm" disabled={!!busy} onClick={() => openLogs(c)}>Logs</button>
                           <button className="btn btn-sm btn-danger" disabled={!!busy}
-                            onClick={() => { if (confirm(`Remover o container ${c.name}?${up ? ' Está a correr — será parado.' : ''}`)) void act(c.id, () => api.containers.action(c.name, 'remove', up), `${c.name} removido`) }}>Remover</button>
+                            onClick={() => { if (confirm(`Remove the container ${c.name}?${up ? ' It is running — it will be stopped.' : ''}`)) void act(c.id, () => api.containers.action(c.name, 'remove', up), `${c.name} removed`) }}>Remove</button>
                         </td>
                       </tr>
                     )
                   })}
-                  {containers && !shown.length && <tr><td colSpan={7} className="muted">{onlyRunning ? 'Nenhum container a correr.' : 'Sem containers.'}</td></tr>}
-                  {!containers && !error && <tr><td colSpan={7} className="muted">A carregar…</td></tr>}
+                  {containers && !shown.length && <tr><td colSpan={7} className="muted">{onlyRunning ? 'No containers running.' : 'No containers.'}</td></tr>}
+                  {!containers && !error && <tr><td colSpan={7} className="muted">Loading…</td></tr>}
                 </tbody>
               </table>
             </section>
@@ -175,23 +175,23 @@ export function ContainersView({
           <div className="config">
             <section>
               <table className="grid">
-                <thead><tr><th>Imagem</th><th>ID</th><th>Tamanho</th><th>Criada</th><th>Containers</th><th></th></tr></thead>
+                <thead><tr><th>Image</th><th>ID</th><th>Size</th><th>Created</th><th>Containers</th><th></th></tr></thead>
                 <tbody>
                   {(images ?? []).map((i) => (
                     <tr key={i.id + i.repoTags.join()}>
-                      <td className="mono">{i.repoTags.length ? i.repoTags.map((t) => <div key={t}>{t}</div>) : <span className="muted">&lt;sem tag&gt;</span>}</td>
+                      <td className="mono">{i.repoTags.length ? i.repoTags.map((t) => <div key={t}>{t}</div>) : <span className="muted">&lt;no tag&gt;</span>}</td>
                       <td className="mono small">{i.id}</td>
                       <td className="small">{i.size}</td>
                       <td className="small muted">{i.created ?? ''}</td>
                       <td className="small">{i.containers ?? ''}</td>
                       <td className="cell-actions">
                         <button className="btn btn-sm btn-danger" disabled={!!busy}
-                          onClick={() => { const ref = i.repoTags[0] ?? i.id; if (confirm(`Remover a imagem ${ref}?`)) void act(i.id, () => api.containers.removeImage(ref), `Imagem ${ref} removida`) }}>Remover</button>
+                          onClick={() => { const ref = i.repoTags[0] ?? i.id; if (confirm(`Remove the image ${ref}?`)) void act(i.id, () => api.containers.removeImage(ref), `Image ${ref} removed`) }}>Remove</button>
                       </td>
                     </tr>
                   ))}
-                  {images && !images.length && <tr><td colSpan={6} className="muted">Sem imagens.</td></tr>}
-                  {!images && !error && <tr><td colSpan={6} className="muted">A carregar…</td></tr>}
+                  {images && !images.length && <tr><td colSpan={6} className="muted">No images.</td></tr>}
+                  {!images && !error && <tr><td colSpan={6} className="muted">Loading…</td></tr>}
                 </tbody>
               </table>
             </section>
@@ -201,12 +201,12 @@ export function ContainersView({
         {tab === 'logs' && logProcId && (
           <>
             <div className="toolbar">
-              <span className="small">{logTarget} · {isActive(states[logProcId]) ? 'a seguir (-f)' : 'parado'}</span>
+              <span className="small">{logTarget} · {isActive(states[logProcId]) ? 'following (-f)' : 'stopped'}</span>
               <span className="grow" />
               {isActive(states[logProcId]) ? (
-                <button className="btn btn-sm" onClick={() => api.stop(logProcId)}>Parar de seguir</button>
+                <button className="btn btn-sm" onClick={() => api.stop(logProcId)}>Stop following</button>
               ) : (
-                <button className="btn btn-sm" onClick={() => logTarget && openLogs({ id: logTarget, name: logTarget } as ContainerInfo)}>Voltar a seguir</button>
+                <button className="btn btn-sm" onClick={() => logTarget && openLogs({ id: logTarget, name: logTarget } as ContainerInfo)}>Follow again</button>
               )}
             </div>
             <LogView lines={logs.get(logProcId)} version={logs.version} onClear={() => logs.clear(logProcId)} />

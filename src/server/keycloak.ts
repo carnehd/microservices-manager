@@ -24,9 +24,9 @@ export class KcAdmin {
         })
       })
     } catch (e) {
-      throw new Error(`Keycloak não responde em ${this.baseUrl} (está a correr?)`)
+      throw new Error(`Keycloak is not responding at ${this.baseUrl} (is it running?)`)
     }
-    if (!res.ok) throw new Error(`Login no Keycloak falhou (${res.status}): ${await res.text()}`)
+    if (!res.ok) throw new Error(`Keycloak login failed (${res.status}): ${await res.text()}`)
     const j = (await res.json()) as { access_token: string; expires_in: number }
     this.token = { value: j.access_token, exp: Date.now() + j.expires_in * 1000 }
     return j.access_token
@@ -67,7 +67,7 @@ export class KcAdmin {
   }
 
   deleteRealm(realm: string): Promise<void> {
-    if (realm === 'master') throw new Error('O realm master não pode ser apagado')
+    if (realm === 'master') throw new Error('The master realm cannot be deleted')
     return this.req('DELETE', `/realms/${encodeURIComponent(realm)}`)
   }
 

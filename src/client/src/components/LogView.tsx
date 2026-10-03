@@ -8,7 +8,7 @@ const LEVELS: Array<{ key: Level; label: string }> = [
   { key: 'warn', label: 'WARN' },
   { key: 'info', label: 'INFO' },
   { key: 'debug', label: 'DEBUG' },
-  { key: 'system', label: 'sistema' }
+  { key: 'system', label: 'system' }
 ]
 
 /** Nível de uma linha (para filtrar e colorir). */
@@ -19,6 +19,28 @@ function level(l: LogLine): Level {
   if (/\bWARN(?:ING)?\b/.test(t)) return 'warn'
   if (/\bDEBUG\b|\bTRACE\b/.test(t)) return 'debug'
   return 'info'
+}
+
+/** Formata/indenta JSON numa linha de log (linha só-JSON ou prefixo + objeto JSON). */
+/** Formata/indenta o JSON de uma linha. Devolve null quando a linha NÃO tem JSON (fica como está). */
+function tryFormatJson(text: string): string | null {
+  const s = text.trim()
+  if (/^[[{]/.test(s)) {
+    try {
+      return JSON.stringify(JSON.parse(s), null, 2)
+    } catch {
+      /* não é JSON */
+    }
+  }
+  const i = text.indexOf('{')
+  if (i >= 0) {
+    try {
+      return text.slice(0, i) + JSON.stringify(JSON.parse(text.slice(i)), null, 2)
+    } catch {
+      /* o resto da linha não é JSON */
+    }
+  }
+  return null
 }
 
 function classify(l: LogLine, lvl: Level): string {
@@ -34,11 +56,14 @@ export function LogView({ lines, version, onClear }: { lines: LogLine[]; version
   const [filter, setFilter] = useState('')
   const [follow, setFollow] = useState(true)
   const [wrap, setWrap] = useState(false)
-  const [hidden, setHidden] = useState<Set<Level>>(new Set())
+  const [json, setJson] = useState(false)
+  const [picked, setPicked] = useState<Set<Level>>(new Set())
   const box = useRef<HTMLDivElement>(null)
 
+  // Filtro por inclusão: clicar liga aquele nível (mostra só os ligados); clicar de novo desliga.
+  // Sem nenhum ligado = mostra tudo.
   const toggleLevel = (k: Level): void =>
-    setHidden((prev) => {
+    setPicked((prev) => {
       const next = new Set(prev)
       if (next.has(k)) next.delete(k)
       else next.add(k)
@@ -48,13 +73,13 @@ export function LogView({ lines, version, onClear }: { lines: LogLine[]; version
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase()
     const arr = lines.filter((l) => {
-      if (hidden.size && hidden.has(level(l))) return false
+      if (picked.size && !picked.has(level(l))) return false
       return !f || l.text.toLowerCase().includes(f)
     })
     return arr.length > RENDER_MAX ? arr.slice(arr.length - RENDER_MAX) : arr
     // `version` força recomputar: o array é mutado in-place pelo useLogs
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines, filter, version, hidden])
+  }, [lines, filter, version, picked])
 
   useEffect(() => {
     if (follow && box.current) box.current.scrollTop = box.current.scrollHeight
@@ -69,25 +94,26 @@ export function LogView({ lines, version, onClear }: { lines: LogLine[]; version
   return (
     <div className="logview">
       <div className="toolbar">
-        <input className="input" placeholder="filtrar…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input className="input" placeholder="filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <span className="log-levels">
           {LEVELS.map((lv) => (
-            <button key={lv.key} className={`chip chip-${lv.key}${hidden.has(lv.key) ? ' off' : ''}`} onClick={() => toggleLevel(lv.key)} title={hidden.has(lv.key) ? `mostrar ${lv.label}` : `esconder ${lv.label}`}>
+            <button key={lv.key} className={`chip chip-${lv.key}${picked.has(lv.key) ? ' active' : picked.size ? ' off' : ''}`} onClick={() => toggleLevel(lv.key)} title={picked.has(lv.key) ? `stop showing only ${lv.label}` : `show only ${lv.label}`}>
               {lv.label}
             </button>
           ))}
         </span>
-        <label className="check"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> seguir</label>
-        <label className="check"><input type="checkbox" checked={wrap} onChange={(e) => setWrap(e.target.checked)} /> quebrar</label>
-        <span className="muted small">{shown.length}{shown.length < lines.length ? ` / ${lines.length}` : ''} linhas</span>
         <span className="grow" />
-        <button className="btn btn-sm" onClick={onClear}>Limpar</button>
+        <label className="check"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> follow</label>
+        <label className="check"><input type="checkbox" checked={wrap} onChange={(e) => setWrap(e.target.checked)} /> wrap</label>
+        <label className="check"><input type="checkbox" checked={json} onChange={(e) => setJson(e.target.checked)} /> JSON</label>
+        <button className="btn btn-sm" onClick={onClear}>Clear</button>
       </div>
       <div ref={box} className={`log-box${wrap ? ' wrap' : ''}`} onScroll={onScroll}>
-        {shown.map((l, i) => (
-          <div key={i} className={`log-line ${classify(l, level(l))}`}>{l.text || ' '}</div>
-        ))}
-        {shown.length === 0 && <div className="muted pad">{lines.length ? 'Nenhuma linha corresponde ao filtro.' : 'Sem output.'}</div>}
+        {shown.map((l, i) => {
+          const fmt = json ? tryFormatJson(l.text) : null
+          return <div key={i} className={`log-line ${classify(l, level(l))}${fmt !== null ? ' log-json' : ''}`}>{(fmt ?? l.text) || ' '}</div>
+        })}
+        {shown.length === 0 && <div className="muted pad">{lines.length ? 'No line matches the filter.' : 'No output.'}</div>}
       </div>
     </div>
   )

@@ -77,7 +77,7 @@ export class ProcessManager extends EventEmitter {
   }
 
   start(opts: StartOptions): ProcState {
-    if (this.isActive(opts.id)) throw new Error(`"${opts.id}" já está a correr`)
+    if (this.isActive(opts.id)) throw new Error(`"${opts.id}" is already running`)
     const isBuild = BUILD_MODES.has(opts.mode)
     this.log(opts.id, 'system', `▶ ${opts.commandLine}`)
     this.log(opts.id, 'system', `  cwd: ${opts.cwd}`)
@@ -104,7 +104,7 @@ export class ProcessManager extends EventEmitter {
 
     this.pipe(opts.id, m, child.stdout!, 'stdout')
     this.pipe(opts.id, m, child.stderr!, 'stderr')
-    child.on('error', (err) => this.log(opts.id, 'system', `✖ erro ao lançar: ${err.message}`))
+    child.on('error', (err) => this.log(opts.id, 'system', `✖ error launching: ${err.message}`))
     child.on('close', (code, signal) => {
       state.exitCode = code
       state.endedAt = Date.now()
@@ -123,10 +123,10 @@ export class ProcessManager extends EventEmitter {
     m.stopping = true
     m.state.status = 'stopping'
     this.emitState(m.state)
-    this.log(id, 'system', '⏹ a parar…')
+    this.log(id, 'system', '⏹ stopping…')
     return new Promise((res) =>
       treeKill(m.child.pid!, 'SIGTERM', (err) => {
-        if (err) this.log(id, 'system', `erro ao parar: ${err.message}`)
+        if (err) this.log(id, 'system', `error stopping: ${err.message}`)
         res()
       })
     )

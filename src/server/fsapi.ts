@@ -13,7 +13,7 @@ export function listDirs(p?: string): DirListing {
     p = '/'
   }
   const path = resolve(p)
-  if (!existsSync(path)) throw new Error(`Pasta não existe: ${path}`)
+  if (!existsSync(path)) throw new Error(`Folder does not exist: ${path}`)
   let dirs: string[]
   try {
     dirs = readdirSync(path, { withFileTypes: true })
@@ -21,20 +21,20 @@ export function listDirs(p?: string): DirListing {
       .map((e) => e.name)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
   } catch {
-    throw new Error(`Sem acesso a ${path}`)
+    throw new Error(`No access to ${path}`)
   }
   const parent = dirname(path)
   return { path, parent: parent === path ? (isWin ? '' : undefined) : parent, dirs, drives }
 }
 
 export function openPath(dir: string): void {
-  if (!existsSync(dir)) throw new Error(`Pasta não existe: ${dir}`)
+  if (!existsSync(dir)) throw new Error(`Folder does not exist: ${dir}`)
   const [cmd, args] = isWin ? ['explorer.exe', [dir]] : process.platform === 'darwin' ? ['open', [dir]] : ['xdg-open', [dir]]
   spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref()
 }
 
 export function openTerminal(dir: string): void {
-  if (!existsSync(dir)) throw new Error(`Pasta não existe: ${dir}`)
+  if (!existsSync(dir)) throw new Error(`Folder does not exist: ${dir}`)
   if (isWin) spawn('start "" cmd.exe', { cwd: dir, shell: true, detached: true, stdio: 'ignore' }).unref()
   else if (process.platform === 'darwin') spawn('open', ['-a', 'Terminal', dir], { detached: true, stdio: 'ignore' }).unref()
   else spawn('x-terminal-emulator', [], { cwd: dir, detached: true, stdio: 'ignore' }).unref()

@@ -7,6 +7,39 @@ export interface DatasourceInfo {
   driver?: string
 }
 
+/** Microserviço tipo "SR": base de dados com database/schema próprios e tabelas geridas por Liquibase. */
+export interface SrDbInfo {
+  /** nome da base de dados a criar */
+  database: string
+  /** schema onde ficam as tabelas (e o Liquibase) */
+  schema: string
+  /** porta HTTP do serviço */
+  httpPort?: number
+  /** as tabelas são criadas pelo Liquibase no arranque */
+  liquibase: boolean
+  /** de onde foi detetado (docker-compose.yaml / application.yaml) */
+  source: string
+}
+
+export interface SrDbStatus {
+  spec: SrDbInfo
+  postgresReady: boolean
+  databaseExists: boolean
+  schemaExists: boolean
+  /** tabelas existentes no schema (sem as do Liquibase) */
+  tables: string[]
+}
+
+/** Dados de uma tabela (só leitura) para visualização na app. */
+export interface SrTableData {
+  table: string
+  columns: string[]
+  rows: Array<Record<string, unknown>>
+  /** há mais linhas do que o limite pedido */
+  truncated: boolean
+  limit: number
+}
+
 export interface ServiceInfo {
   id: string
   name: string
@@ -23,6 +56,8 @@ export interface ServiceInfo {
   /** Caminho do JSON OpenAPI (ex.: /v3/api-docs) */
   apiDocsPath?: string
   datasource?: DatasourceInfo
+  /** Spec de base de dados de um microserviço SR (database/schema + Liquibase), detetado do docker-compose/application */
+  srDatabase?: SrDbInfo
   hasDatabase: boolean
   usesKeycloak: boolean
   /** Pasta onde existe mvnw/mvnw.cmd (o próprio projeto ou um ancestral) */
@@ -91,12 +126,16 @@ export interface LogLine {
 
 export interface ServiceSettings {
   profile?: string
+  /** Serviço marcado como favorito (aparece no topo da lista) */
+  favorite?: boolean
   /** Porta HTTP com que o serviço arranca (sobrepõe server.port do application.yml) */
   port?: number
   /** Repositório local do Maven só para este serviço (sobrepõe o das Definições) */
   mavenRepoLocal?: string
   /** Saltar testes no Build/Clean build/Clean install (-DskipTests); omissão = true */
   skipTests?: boolean
+  /** Correr spotless:apply antes dos builds e do arranque */
+  spotless?: boolean
   /** Dependências declaradas (ids ou nomes de serviços); vazio = usar as inferidas do scan */
   dependsOn?: string[]
   /** Arrancar sempre em debug (JDWP) */
@@ -172,7 +211,42 @@ export interface AppSettings {
   keycloak: KeycloakSettings
   redis: RedisSettings
   postgres: PostgresSettings
+  grafana: GrafanaSettings
+  pubsub: PubSubSettings
   services: Record<string, ServiceSettings>
+}
+
+/** Ligação a um Grafana (local ou da empresa) para ver logs guardados num datasource Loki. */
+export interface GrafanaSettings {
+  /** URL base do Grafana, ex.: http://localhost:3000 ou https://grafana.empresa.com */
+  url?: string
+  /** Service Account Token (role Viewer). Fica guardado localmente. */
+  token?: string
+  /** uid do datasource de logs (Loki) dentro do Grafana */
+  datasourceUid?: string
+  /** tipo do datasource (por omissão loki) */
+  datasourceType?: string
+  /** consulta LogQL que seleciona os logs dos microserviços, ex.: {app="ms-cliente-perfil"} */
+  query?: string
+  /** Org ID do Grafana (opcional; só se houver várias organizações) */
+  orgId?: number
+}
+
+export interface GrafanaLogLine {
+  /** timestamp ISO */
+  ts: string
+  /** timestamp em nanosegundos (como o Loki devolve) */
+  tsNano: string
+  line: string
+  level?: string
+  labels: Record<string, string>
+}
+
+export interface GrafanaTestResult {
+  ok: boolean
+  datasourceName?: string
+  datasourceType?: string
+  message?: string
 }
 
 export interface KeycloakInfo {
@@ -315,13 +389,18 @@ export interface EnvKey {
 }
 export interface EnvsInfo {
   resourcesDir: string
+  /** ids (um por ficheiro); cada application-<ambiente> e cada ficheiro de k8s é uma entrada própria */
   profiles: string[]
   files: Record<string, string>
+  /** id → etiqueta amigável para o dropdown (ex. "dev", "dev · k8s/dev.yaml") */
+  labels: Record<string, string>
   /** perfis cujo ficheiro foi gerado pela app (não servem de origem) */
   generated: string[]
   /** perfis cujos valores vieram (também) da pasta k8s */
   k8s: string[]
   keys: EnvKey[]
+  /** valores do application.(yaml|yml|properties) base (sem perfil); chave → valor em texto */
+  defaultValues: Record<string, string>
   mix?: EnvMix
 }
 export interface EnvComposeResult {
@@ -422,6 +501,59 @@ export interface RedisSettings {
   /** Container Podman/Docker gerido pela app (nome e imagem) */
   containerName: string
   image: string
+}
+
+/** Emulador local de Google Cloud Pub/Sub (container gerido pela app). */
+export interface PubSubSettings {
+  containerName: string
+  image: string
+  /** porta publicada no host (o emulador escuta 8085 dentro do container) */
+  port: number
+  projectId: string
+}
+
+export interface PubSubInfo {
+  engineOk: boolean
+  containerName: string
+  image: string
+  port: number
+  projectId: string
+  exists: boolean
+  running: boolean
+  /** para serviços no host (Host JVM) */
+  emulatorHostLocal: string
+  /** para serviços noutro container na mesma rede */
+  emulatorHostContainer: string
+  error?: string
+}
+
+export interface PubSubTopic {
+  name: string
+}
+export interface PubSubSubscription {
+  name: string
+  topic: string
+}
+
+export interface PubSubMessage {
+  /** payload já descodificado (o Pub/Sub guarda-o em base64) */
+  data: string
+  attributes: Record<string, string>
+  messageId: string
+  publishTime: string
+}
+
+/** Mensagem guardada no histórico (inbox) da app, com estado lida/não lida. */
+export interface PubSubStoredMessage extends PubSubMessage {
+  id: string
+  read: boolean
+  /** quando a app a recebeu (ISO) */
+  receivedAt: string
+}
+
+export interface PubSubInbox {
+  messages: PubSubStoredMessage[]
+  unread: number
 }
 export interface RedisInfo {
   connected: boolean

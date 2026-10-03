@@ -46,30 +46,30 @@ export function JarsView({ svc, notify, fail }: { svc: ServiceInfo; notify: Noti
     }
   }
 
-  if (!info) return <div className="empty">A ler target/…</div>
+  if (!info) return <div className="empty">Reading target/…</div>
   const loaded = loadedIds && providerIds.some((id) => loadedIds.has(id))
 
   return (
     <div className="config">
       <section>
         <div className="row" style={{ flexWrap: 'wrap' }}>
-          <h3 className="grow">Jars gerados em <span className="mono">target/</span></h3>
+          <h3 className="grow">Jars generated in <span className="mono">target/</span></h3>
           {providerIds.length > 0 && (loadedIds === null
-            ? <span className="muted small">estado desconhecido (liga a Administração)</span>
-            : loaded ? <Badge tone="green" title={providerIds.join(', ')}>✓ carregado no Keycloak</Badge>
-            : <Badge tone="muted" title={providerIds.join(', ')}>não carregado</Badge>)}
-          <label className="switch small" title="Reiniciar o Keycloak depois de instalar, para carregar o provider">
+            ? <span className="muted small">unknown state (connect in Administration)</span>
+            : loaded ? <Badge tone="green" title={providerIds.join(', ')}>✓ loaded in Keycloak</Badge>
+            : <Badge tone="muted" title={providerIds.join(', ')}>not loaded</Badge>)}
+          <label className="switch small" title="Restart Keycloak after installing, to load the provider">
             <input type="checkbox" checked={restart} onChange={(e) => setRestart(e.target.checked)} />
             <span className="switch-track"><span className="switch-knob" /></span>
-            <span className="switch-label">reiniciar depois</span>
+            <span className="switch-label">restart afterwards</span>
           </label>
-          <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => act('build', () => api.kcDeploySpi(svc.id, { build: true, restart }), 'Compilado e instalado')} title="mvn package + copiar o jar mais recente para providers">
-            {busy === 'build' ? 'A compilar…' : 'Build & instalar'}
+          <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => act('build', () => api.kcDeploySpi(svc.id, { build: true, restart }), 'Compiled and installed')} title="mvn package + copy the newest jar to providers">
+            {busy === 'build' ? 'Compiling…' : 'Build & install'}
           </button>
           <button className="btn btn-sm" disabled={!!busy} onClick={load}>⟳</button>
         </div>
         <table className="grid">
-          <thead><tr><th>Jar</th><th>Versão</th><th>Data · tamanho</th><th></th></tr></thead>
+          <thead><tr><th>Jar</th><th>Version</th><th>Date · size</th><th></th></tr></thead>
           <tbody>
             {info.candidates.map((j) => {
               const inst = info.installed.some((i) => i.name === j.name)
@@ -79,26 +79,26 @@ export function JarsView({ svc, notify, fail }: { svc: ServiceInfo; notify: Noti
                   <td className="mono small">{j.version ?? '—'}</td>
                   <td className="small muted">{fmt(j.mtime, j.size)}</td>
                   <td className="cell-actions">
-                    {inst ? <Badge tone="green">instalado</Badge> : null}
-                    <button className="btn btn-sm" disabled={!!busy} title="copiar este jar para a pasta providers do Keycloak"
-                      onClick={() => act(j.name, () => api.kcDeploySpi(svc.id, { build: false, restart, jar: j.name }), `${j.name} instalado`)}>
-                      {busy === j.name ? '…' : 'Instalar'}
+                    {inst ? <Badge tone="green">installed</Badge> : null}
+                    <button className="btn btn-sm" disabled={!!busy} title="copy this jar to the Keycloak providers folder"
+                      onClick={() => act(j.name, () => api.kcDeploySpi(svc.id, { build: false, restart, jar: j.name }), `${j.name} installed`)}>
+                      {busy === j.name ? '…' : 'Install'}
                     </button>
                   </td>
                 </tr>
               )
             })}
-            {!info.candidates.length && <tr><td colSpan={4} className="muted">Sem jars em target/ — compila no IntelliJ ou usa "Build & instalar".</td></tr>}
+            {!info.candidates.length && <tr><td colSpan={4} className="muted">No jars in target/ — compile in IntelliJ or use "Build & install".</td></tr>}
           </tbody>
         </table>
       </section>
 
       <section>
-        <h3>Instalados em <span className="mono">providers/</span></h3>
-        {!info.installed.length && <p className="muted">Nenhum jar deste SPI em providers/.</p>}
+        <h3>Installed in <span className="mono">providers/</span></h3>
+        {!info.installed.length && <p className="muted">No jar from this SPI in providers/.</p>}
         {info.installed.length > 0 && (
           <table className="grid">
-            <thead><tr><th>Jar</th><th>Versão</th><th>Data · tamanho</th><th></th></tr></thead>
+            <thead><tr><th>Jar</th><th>Version</th><th>Date · size</th><th></th></tr></thead>
             <tbody>
               {info.installed.map((i) => (
                 <tr key={i.name}>
@@ -107,14 +107,14 @@ export function JarsView({ svc, notify, fail }: { svc: ServiceInfo; notify: Noti
                   <td className="small muted">{fmt(i.mtime, i.size)}</td>
                   <td className="cell-actions">
                     <button className="btn btn-sm btn-danger" disabled={!!busy}
-                      onClick={() => { if (confirm(`Remover ${i.name} de providers/?`)) void act(i.name, () => api.kcRemoveProvider(i.name), `${i.name} removido`) }}>Remover</button>
+                      onClick={() => { if (confirm(`Remove ${i.name} from providers/?`)) void act(i.name, () => api.kcRemoveProvider(i.name), `${i.name} removed`) }}>Remove</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-        <p className="muted small">Alterações em providers/ só são carregadas depois de reiniciar o Keycloak.</p>
+        <p className="muted small">Changes in providers/ are only loaded after restarting Keycloak.</p>
       </section>
     </div>
   )
