@@ -239,7 +239,6 @@ export function KeycloakView({
                         <tr key={s.id}>
                           <td>
                             {s.name}
-                            <div className="muted small mono">{s.relativePath}</div>
                             {ids.length > 0 && <div className="muted small mono">id: {ids.join(', ')}</div>}
                           </td>
                           <td className="mono small">{inst?.version ?? selected?.version ?? s.version ?? '—'}</td>
