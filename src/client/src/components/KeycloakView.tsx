@@ -23,6 +23,15 @@ export function KeycloakView({
   const [tab, setTab] = useState<Tab>('logs')
   const [info, setInfo] = useState<KeycloakInfo | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // Base URL onde corre o web-app dos portais de teste (node serve.mjs em examples/web-app)
+  const [portalsBase, setPortalsBase] = useState(() => {
+    try { return localStorage.getItem('msm.portalsBase') || 'http://localhost:3001' } catch { return 'http://localhost:3001' }
+  })
+  const openPortal = (page: string): void => {
+    const base = portalsBase.trim().replace(/\/+$/, '')
+    try { localStorage.setItem('msm.portalsBase', base) } catch { /* ignore */ }
+    api.openExternal(`${base}/${page}`)
+  }
   const state = states[KC_ID]
   const kc = settings.keycloak
   // o estado é o do container (o processo "keycloak" da app é só o podman logs -f)
@@ -126,6 +135,16 @@ export function KeycloakView({
           onClick={() => { if (confirm(`Recreate the container ${kc.containerName}? Data (H2) and providers stay on disk.`)) void run('recreate', api.kcRecreate, () => void refreshInfo()) }}>Recreate container</button>
         <span className="grow" />
         <button className="btn" onClick={() => api.openExternal(adminUrl)} title={adminUrl}>Admin console</button>
+      </div>
+
+      <div className="actions">
+        <span className="muted small">Test login portals:</span>
+        <button className="btn" disabled={!running} onClick={() => openPortal('backoffice.html?login')} title={`${portalsBase}/backoffice.html — login no client cga_backoffice`}>↗ Login Backoffice</button>
+        <button className="btn" disabled={!running} onClick={() => openPortal('cga-directa.html?login')} title={`${portalsBase}/cga-directa.html — login no client cga_directa`}>↗ Login CGA Directa</button>
+        <span className="grow" />
+        <label className="inline">base
+          <input className="input mono" style={{ width: 190 }} value={portalsBase} onChange={(e) => setPortalsBase(e.target.value)} title="URL where the web-app (examples/web-app · node serve.mjs) is running" />
+        </label>
       </div>
       {info && info.keycloakContainers.filter((c) => c.name !== kc.containerName).length > 0 && (
         <div className="actions">
