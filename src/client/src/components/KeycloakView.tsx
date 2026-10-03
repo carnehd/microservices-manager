@@ -217,56 +217,61 @@ export function KeycloakView({
                 {spis.length > 1 && <button className="btn btn-sm btn-primary" disabled={!info?.valid || !!busy} onClick={installAll}>{busy === 'deploy-all' ? 'Installing…' : `⇪ Install all (${spis.length})`}</button>}
               </div>
               {!spis.length && <p className="muted">No project with org.keycloak dependencies found.</p>}
-              {spis.map((s) => {
-                const j = jars[s.id] ?? { candidates: [], installed: [] }
-                const selected = j.candidates.find((c) => c.name === chosenJar[s.id]) ?? j.candidates[0]
-                return (
-                  <div className="row spi-row" key={s.id}>
-                    <div className="grow">
-                      <div>
-                        {s.name} <span className="muted small mono">{s.relativePath}</span>
-                        {(() => {
-                          const ids = s.providerIds ?? []
-                          if (!ids.length) return null
-                          if (loadedIds === null) return <span className="muted small"> · unknown state (connect in Administration)</span>
-                          const loaded = ids.filter((id) => loadedIds.has(id))
-                          if (loaded.length) return <Badge tone="green" title={`loaded in Keycloak: ${loaded.join(', ')}`}>✓ loaded</Badge>
-                          if (j.installed.length) return <Badge tone="amber" title={`jar in providers/ but ${ids.join(', ')} does not appear in serverinfo — restart Keycloak`}>installed, not loaded</Badge>
-                          return <Badge tone="muted" title={ids.join(', ')}>not installed</Badge>
-                        })()}
-                      </div>
-                      <div className="muted small mono">{s.spiProviders.map((p) => p.split('.').pop()).join(', ') || 'no META-INF/services'}{s.providerIds?.length ? ` · id: ${s.providerIds.join(', ')}` : ''}</div>
-                      <div className="small">
-                        <span className="muted">installed: </span>
-                        {j.installed.length ? j.installed.map((i) => (
-                          <span key={i.name} className="mono" title={`${i.name} · ${fmtDate(i.mtime)}`}>
-                            <Badge tone="green">{i.version ?? i.name}</Badge>
-                            <a className="link small" onClick={() => { if (confirm(`Remove ${i.name} from providers/?`)) void run('remove', () => api.kcRemoveProvider(i.name), () => { void refreshInfo(); void refreshJars() }) }}> ✕</a>{' '}
-                          </span>
-                        )) : <span className="muted">no version</span>}
-                      </div>
-                      <div className="small row" style={{ padding: 0 }}>
-                        <span className="muted">in target/: </span>
-                        {!j.candidates.length && <span className="text-error mono">no jar (compile in IntelliJ or use "with build")</span>}
-                        {j.candidates.length === 1 && <span className="mono muted">{j.candidates[0].name} · {fmtDate(j.candidates[0].mtime)} · {Math.round(j.candidates[0].size / 1024)} KB</span>}
-                        {j.candidates.length > 1 && (
-                          <select className="input" value={selected?.name ?? ''} onChange={(e) => setChosenJar({ ...chosenJar, [s.id]: e.target.value })} title="several versions in target/ — choose the one to install">
-                            {j.candidates.map((c) => <option key={c.name} value={c.name}>{c.version ?? c.name} · {fmtDate(c.mtime)} · {Math.round(c.size / 1024)} KB</option>)}
-                          </select>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      className="btn btn-sm btn-primary"
-                      disabled={!info?.valid || !!busy || isActive(states[s.id]) || (installMode === 'existing' && !selected)}
-                      onClick={() => install(s.id, s.name)}
-                      title={installMode === 'build' ? 'mvn package + copy the newest jar to providers' : `copy ${selected?.name ?? ''} to providers`}
-                    >
-                      {busy === `deploy:${s.id}` ? 'Installing…' : installMode === 'build' ? '⇪ Build & install' : `⇪ Install ${selected?.version ?? 'jar'}`}
-                    </button>
-                  </div>
-                )
-              })}
+              {spis.length > 0 && (
+                <table className="grid spi-table">
+                  <thead>
+                    <tr><th>SPI</th><th>Version</th><th>State</th><th>Modified</th><th>Jar</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {spis.map((s) => {
+                      const j = jars[s.id] ?? { candidates: [], installed: [] }
+                      const selected = j.candidates.find((c) => c.name === chosenJar[s.id]) ?? j.candidates[0]
+                      const inst = j.installed[0]
+                      const ref = inst ?? selected // jar a mostrar nas colunas (instalado tem prioridade)
+                      const ids = s.providerIds ?? []
+                      const loaded = loadedIds ? ids.filter((id) => loadedIds.has(id)) : []
+                      const state = loadedIds === null
+                        ? <Badge tone="muted" title="connect in Administration to check">unknown</Badge>
+                        : loaded.length ? <Badge tone="green" title={`loaded in Keycloak: ${loaded.join(', ')}`}>✓ loaded</Badge>
+                        : j.installed.length ? <Badge tone="amber" title={`jar in providers/ but ${ids.join(', ') || 'provider'} not in serverinfo — restart Keycloak`}>installed, not loaded</Badge>
+                        : <Badge tone="muted">not installed</Badge>
+                      return (
+                        <tr key={s.id}>
+                          <td>
+                            {s.name}
+                            <div className="muted small mono">{s.relativePath}</div>
+                            {ids.length > 0 && <div className="muted small mono">id: {ids.join(', ')}</div>}
+                          </td>
+                          <td className="mono small">{inst?.version ?? selected?.version ?? s.version ?? '—'}</td>
+                          <td>{state}</td>
+                          <td className="small muted">{ref ? fmtDate(ref.mtime) : '—'}</td>
+                          <td className="mono small">
+                            {inst ? (
+                              <span title={`${inst.name} · ${fmtDate(inst.mtime)}`}>{inst.name}
+                                <a className="link small" title="remove from providers/" onClick={() => { if (confirm(`Remove ${inst.name} from providers/?`)) void run('remove', () => api.kcRemoveProvider(inst.name), () => { void refreshInfo(); void refreshJars() }) }}> ✕</a>
+                              </span>
+                            ) : j.candidates.length > 1 ? (
+                              <select className="input" value={selected?.name ?? ''} onChange={(e) => setChosenJar({ ...chosenJar, [s.id]: e.target.value })} title="several jars in target/ — choose the one to install">
+                                {j.candidates.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                              </select>
+                            ) : j.candidates.length === 1 ? (
+                              <span className="muted" title={`${fmtDate(j.candidates[0].mtime)} · ${Math.round(j.candidates[0].size / 1024)} KB`}>{j.candidates[0].name} <span className="muted">(target/)</span></span>
+                            ) : <span className="text-error">no jar (build or compile)</span>}
+                          </td>
+                          <td className="cell-actions">
+                            <button className="btn btn-sm btn-primary"
+                              disabled={!info?.valid || !!busy || isActive(states[s.id]) || (installMode === 'existing' && !selected)}
+                              onClick={() => install(s.id, s.name)}
+                              title={installMode === 'build' ? 'mvn package + copy the newest jar to providers' : `copy ${selected?.name ?? ''} to providers`}>
+                              {busy === `deploy:${s.id}` ? 'Installing…' : installMode === 'build' ? '⇪ Build & install' : '⇪ Install'}
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
             </section>
           </div>
         )}
