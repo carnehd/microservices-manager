@@ -46,6 +46,7 @@ export function PubSubView({ settings, onSaveSettings, notify, fail }: {
   const [inbox, setInbox] = useState<{ sub: string; data: PubSubInbox } | null>(null)
   const [pubTopic, setPubTopic] = useState('')
   const [pubData, setPubData] = useState('{\n  "referencia": "TEST-001",\n  "descricao": "test message",\n  "estado": "NOVA"\n}')
+  const [cfgOpen, setCfgOpen] = useState(false)
 
   const openInbox = async (sub: string) => {
     setBusy('inbox:' + sub)
@@ -204,10 +205,12 @@ export function PubSubView({ settings, onSaveSettings, notify, fail }: {
           <div className="row">
             <h3 style={{ margin: 0 }}>Messages</h3>
             <span className="grow" />
-            <select className="input mono input-inline" value={inbox?.sub ?? ''} onChange={(e) => { if (e.target.value) void openInbox(e.target.value); else setInbox(null) }} title="Subscription to consult" disabled={!info.running}>
-              <option value="">subscription…</option>
-              {subs.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
-            </select>
+            <label className="inline">Consult subscription
+              <select className="input mono input-inline" value={inbox?.sub ?? ''} onChange={(e) => { if (e.target.value) void openInbox(e.target.value); else setInbox(null) }} title="Choose the subscription whose messages you want to consult" disabled={!info.running}>
+                <option value="">choose a subscription…</option>
+                {subs.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+              </select>
+            </label>
           </div>
           {!info.running && <div className="muted small">Start the emulator to view messages.</div>}
           {info.running && !inbox && <div className="muted small">Choose a subscription above to consult its messages.</div>}
@@ -258,18 +261,25 @@ export function PubSubView({ settings, onSaveSettings, notify, fail }: {
         </div>
 
         <div className="srdb-card">
-          <h3>Configuration for the microservices</h3>
-          <p className="muted small">Set these environment variables in the microservice that will use Pub/Sub:</p>
-          <div className="srdb-fields">
-            <Field label="PUBSUB_EMULATOR_HOST (on the host)" value={info.emulatorHostLocal} notify={notify} />
-            <Field label="PUBSUB_EMULATOR_HOST (in a container)" value={info.emulatorHostContainer} notify={notify} />
-            <Field label="PUBSUB_PROJECT_ID" value={info.projectId} notify={notify} />
-          </div>
-          <p className="muted small">On the host (Host JVM) use <span className="mono">localhost</span>; in a service in another container, connect it to the same network and use <span className="mono">{info.containerName}:8085</span>.</p>
+          <button className="pubsub-collapse" onClick={() => setCfgOpen((v) => !v)} title={cfgOpen ? 'collapse' : 'expand'}>
+            <span className="pubsub-chevron">{cfgOpen ? '▾' : '▸'}</span>
+            <h3 style={{ margin: 0 }}>Configuration for the microservices</h3>
+          </button>
+          {cfgOpen && (
+            <>
+              <p className="muted small">Set these environment variables in the microservice that will use Pub/Sub:</p>
+              <div className="srdb-fields">
+                <Field label="PUBSUB_EMULATOR_HOST (on the host)" value={info.emulatorHostLocal} notify={notify} />
+                <Field label="PUBSUB_EMULATOR_HOST (in a container)" value={info.emulatorHostContainer} notify={notify} />
+                <Field label="PUBSUB_PROJECT_ID" value={info.projectId} notify={notify} />
+              </div>
+              <p className="muted small">On the host (Host JVM) use <span className="mono">localhost</span>; in a service in another container, connect it to the same network and use <span className="mono">{info.containerName}:8085</span>.</p>
+            </>
+          )}
         </div>
 
         <div className="srdb-card">
-          <h3>Topics <span className="muted">{topics.length}</span></h3>
+          <h3>Create topics <span className="count">{topics.length}</span></h3>
           {!info.running && <div className="muted small">Start the emulator to manage topics.</div>}
           {info.running && (
             <>
@@ -291,7 +301,7 @@ export function PubSubView({ settings, onSaveSettings, notify, fail }: {
         </div>
 
         <div className="srdb-card">
-          <h3>Subscriptions <span className="muted">{subs.length}</span></h3>
+          <h3>Create subscriptions <span className="count">{subs.length}</span></h3>
           {!info.running && <div className="muted small">Start the emulator to manage subscriptions.</div>}
           {info.running && (
             <>
