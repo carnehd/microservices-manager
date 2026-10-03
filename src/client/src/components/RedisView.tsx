@@ -94,6 +94,27 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
     }
   }
 
+  // Criar/arrancar o container: o Redis pode demorar a aceitar ligações, por isso espera-se
+  // (com retries) até estar connected antes de actualizar o estado e listar as chaves.
+  const startRedisContainer = async (): Promise<void> => {
+    setBusy('container')
+    try {
+      const r = await api.redis.startContainer()
+      notify(typeof r === 'string' ? r : 'Redis container started', 'success')
+      let next = await api.redis.info()
+      for (let i = 0; i < 16 && !next.connected; i++) {
+        await new Promise((res) => setTimeout(res, 500))
+        next = await api.redis.info()
+      }
+      setInfo(next)
+      if (next.connected) await search('0')
+    } catch (e) {
+      fail(e)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const runCmd = async (): Promise<void> => {
     if (!cmd.trim()) return
     setBusy('cmd')
@@ -128,7 +149,7 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
 
       <div className="actions">
         {ct && !ct.running && (
-          <button className="btn btn-primary" disabled={!!busy} onClick={() => act('container', api.redis.startContainer, 'Redis container started')}>
+          <button className="btn btn-primary" disabled={!!busy} onClick={() => void startRedisContainer()}>
             {busy === 'container' ? 'Starting…' : ct.exists ? `▶ Start container ${ct.name}` : `▶ Create and start container ${ct.name}`}
           </button>
         )}
