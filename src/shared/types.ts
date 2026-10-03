@@ -445,6 +445,15 @@ export interface EngineInfo {
   error?: string
 }
 
+/** Resultado de correr um comando do motor de containers (consola da página Containers) */
+export interface ContainerExecResult {
+  command: string
+  stdout: string
+  stderr: string
+  code: number
+  ms: number
+}
+
 /** Git por serviço */
 export interface GitChange {
   /** caminho relativo à pasta do serviço */

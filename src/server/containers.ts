@@ -1,6 +1,6 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import type { ContainerInfo, EngineInfo, ImageInfo, MachineInfo } from '../shared/types'
+import type { ContainerExecResult, ContainerInfo, EngineInfo, ImageInfo, MachineInfo } from '../shared/types'
 
 const execFileP = promisify(execFile)
 
@@ -14,6 +14,34 @@ async function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<str
     if (err.code === 'ENOENT') throw new Error(`"${cmd}" not found in PATH — install Podman (or set another command in Settings)`)
     const msg = (err.stderr || err.stdout || err.message || '').trim().split('\n').filter(Boolean).pop() ?? 'unknown error'
     throw new Error(msg)
+  }
+}
+
+// Subcomandos de leitura/diagnóstico permitidos na consola da página Containers (sem destruir nada).
+const EXEC_ALLOWED = new Set(['machine', 'info', 'version', 'ps', 'images', 'image', 'stats', 'system', 'volume', 'network', 'port', 'top', 'inspect', 'healthcheck', 'df'])
+const EXEC_ARG_RE = /^[\w.@:/=+,%-]+$/
+
+/** Corre um comando de leitura do motor (consola): devolve stdout/stderr/código, sem lançar em erro de execução. */
+export async function execContainerCommand(cmd: string, args: string[]): Promise<ContainerExecResult> {
+  const clean = args.map((a) => String(a)).filter((a) => a.length)
+  if (!clean.length) throw new Error('No command given')
+  if (!EXEC_ALLOWED.has(clean[0])) throw new Error(`Command "${clean[0]}" is not allowed in the console (read-only commands only)`)
+  for (const a of clean) if (!EXEC_ARG_RE.test(a)) throw new Error(`Invalid argument: ${a}`)
+  const command = `${cmd} ${clean.join(' ')}`
+  const start = Date.now()
+  try {
+    const { stdout, stderr } = await execFileP(cmd, clean, { timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true })
+    return { command, stdout, stderr, code: 0, ms: Date.now() - start }
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string; code?: unknown }
+    if (err.code === 'ENOENT') throw new Error(`"${cmd}" not found in PATH — install Podman (or set another command in Settings)`)
+    return {
+      command,
+      stdout: err.stdout ?? '',
+      stderr: err.stderr || err.message || 'command failed',
+      code: typeof err.code === 'number' ? err.code : 1,
+      ms: Date.now() - start
+    }
   }
 }
 

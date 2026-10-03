@@ -4,7 +4,7 @@ import { basename, delimiter, join } from 'path'
 import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type StartMode } from '../shared/types'
 import { addSseClient, broadcast } from './events'
 import { listDirs, openPath, openTerminal } from './fsapi'
-import { containerAction, containerState, engineInfo, ensureContainer, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
+import { containerAction, containerState, engineInfo, ensureContainer, execContainerCommand, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
 import * as redisOps from './redis'
 import { depsCommandArgs, listDeps } from './deps'
 import { parse as parseYaml } from 'yaml'
@@ -660,6 +660,7 @@ apiRouter.post('/services/:id/git/push', h((req) => gitOps.push(findService(para
 const CONTAINER_ACTIONS = new Set<ContainerAction>(['start', 'stop', 'restart', 'remove', 'pause', 'unpause'])
 
 apiRouter.get('/containers/engine', h(() => engineInfo(containerCmd())))
+apiRouter.post('/containers/exec', h((req) => execContainerCommand(containerCmd(), Array.isArray(req.body?.args) ? req.body.args : [])))
 apiRouter.get('/containers', h(() => listContainers(containerCmd())))
 apiRouter.get('/containers/images', h(() => listImages(containerCmd())))
 apiRouter.delete('/containers/images/:id', h((req) => removeImage(containerCmd(), param(req, 'id'), req.query.force === '1')))

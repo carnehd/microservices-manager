@@ -5,9 +5,24 @@ import type { LogsApi } from '../hooks'
 import { LogView } from './LogView'
 import { Badge, StatusDot, isActive } from './common'
 
-type Tab = 'containers' | 'images' | 'logs'
+type Tab = 'containers' | 'images' | 'logs' | 'console'
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
 const REFRESH_MS = 5000
+
+// Comandos úteis (só leitura/diagnóstico) para a consola — o 1º arg tem de estar na whitelist do servidor.
+const USEFUL_CMDS: Array<{ label: string; args: string[] }> = [
+  { label: 'machine list — VMs do Podman', args: ['machine', 'list'] },
+  { label: 'machine info — detalhes da máquina', args: ['machine', 'info'] },
+  { label: 'machine inspect — config da VM (JSON)', args: ['machine', 'inspect'] },
+  { label: 'info — motor de containers', args: ['info'] },
+  { label: 'version — versões cliente/servidor', args: ['version'] },
+  { label: 'ps -a — todos os containers', args: ['ps', '-a'] },
+  { label: 'images — imagens locais', args: ['images'] },
+  { label: 'stats --no-stream — CPU/memória', args: ['stats', '--no-stream'] },
+  { label: 'system df — espaço em disco', args: ['system', 'df'] },
+  { label: 'volume ls — volumes', args: ['volume', 'ls'] },
+  { label: 'network ls — redes', args: ['network', 'ls'] }
+]
 
 export function ContainersView({
   logs, states, notify, fail
@@ -20,6 +35,44 @@ export function ContainersView({
   const [error, setError] = useState<string | null>(null)
   const [onlyRunning, setOnlyRunning] = useState(false)
   const [logTarget, setLogTarget] = useState<string | null>(null)
+  const [consoleLog, setConsoleLog] = useState('')
+  const [selCmd, setSelCmd] = useState(0)
+  const cmdName = engine?.command ?? 'podman'
+
+  const appendConsole = useCallback((text: string) => setConsoleLog((prev) => (prev ? prev + '\n' : '') + text), [])
+  // Corre um comando (consola): regista o comando e o output (stdout/stderr + código/tempo).
+  const runCmd = async (args: string[]): Promise<void> => {
+    setBusy('cmd')
+    setTab('console')
+    appendConsole(`$ ${cmdName} ${args.join(' ')}`)
+    try {
+      const r = await api.containers.exec(args)
+      const out = [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n')
+      appendConsole(`${out || '(no output)'}\n— exit ${r.code} · ${r.ms} ms`)
+    } catch (e) {
+      appendConsole(`✗ ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setBusy(null)
+    }
+  }
+  // Start/stop da máquina do Podman, com o comando e o resultado visíveis na consola.
+  const runMachine = async (action: 'start' | 'stop', name: string): Promise<void> => {
+    setBusy('machine')
+    setTab('console')
+    appendConsole(`$ ${cmdName} machine ${action}${name ? ' ' + name : ''}`)
+    try {
+      const msg = await api.containers.machine(name, action)
+      appendConsole(`${msg || '(done)'}`)
+      notify(`Machine ${name} ${action === 'start' ? 'started' : 'stopped'}`, 'success')
+      await refresh(true)
+      await refreshEngine()
+    } catch (e) {
+      appendConsole(`✗ ${e instanceof Error ? e.message : String(e)}`)
+      fail(e)
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const refreshEngine = useCallback(async () => {
     try {
@@ -105,11 +158,11 @@ export function ContainersView({
 
       <div className="actions">
         {machine && (machineDown ? (
-          <button className="btn btn-primary" disabled={!!busy} onClick={() => act('machine', () => api.containers.machine(machine.name, 'start'), `Machine ${machine.name} started`)}>
+          <button className="btn btn-primary" disabled={!!busy} onClick={() => void runMachine('start', machine.name)}>
             {busy === 'machine' ? 'Starting the machine…' : `▶ Start machine ${machine.name}`}
           </button>
         ) : (
-          <button className="btn" disabled={!!busy} onClick={() => act('machine', () => api.containers.machine(machine.name, 'stop'), `Machine ${machine.name} stopped`)}>■ Stop machine</button>
+          <button className="btn" disabled={!!busy} onClick={() => void runMachine('stop', machine.name)}>{busy === 'machine' ? 'Stopping the machine…' : '■ Stop machine'}</button>
         ))}
         <button className="btn" disabled={!!busy} onClick={() => { void refresh(); void refreshEngine() }}>⟳ Refresh</button>
         <label className="check"><input type="checkbox" checked={onlyRunning} onChange={(e) => setOnlyRunning(e.target.checked)} /> only running</label>
@@ -121,6 +174,7 @@ export function ContainersView({
         <button className={tab === 'containers' ? 'active' : ''} onClick={() => setTab('containers')}>Containers {containers ? <span className="count">{running}</span> : null}</button>
         <button className={tab === 'images' ? 'active' : ''} onClick={() => setTab('images')}>Images {images ? <span className="count">{images.length}</span> : null}</button>
         <button className={tab === 'logs' ? 'active' : ''} disabled={!logTarget} onClick={() => setTab('logs')}>Logs{logTarget ? `: ${logTarget}` : ''}</button>
+        <button className={tab === 'console' ? 'active' : ''} onClick={() => setTab('console')}>Console</button>
       </div>
 
       <div className="tab-body">
@@ -211,6 +265,22 @@ export function ContainersView({
             </div>
             <LogView lines={logs.get(logProcId)} version={logs.version} onClear={() => logs.clear(logProcId)} />
           </>
+        )}
+
+        {tab === 'console' && (
+          <div className="config">
+            <div className="toolbar">
+              <label className="inline grow">Useful commands
+                <select className="input mono grow" value={selCmd} onChange={(e) => setSelCmd(Number(e.target.value))}>
+                  {USEFUL_CMDS.map((c, i) => <option key={c.label} value={i}>{cmdName} {c.args.join(' ')} — {c.label.split('—')[1]?.trim() ?? c.label}</option>)}
+                </select>
+              </label>
+              <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => void runCmd(USEFUL_CMDS[selCmd].args)}>{busy === 'cmd' ? 'Running…' : '▶ Run'}</button>
+              <button className="btn btn-sm" disabled={!consoleLog} onClick={() => setConsoleLog('')}>Clear</button>
+            </div>
+            <p className="muted small pad">Read-only diagnostic commands against <span className="mono">{cmdName}</span>. Starting/stopping the Podman machine also shows here.</p>
+            <pre className="resp-body console-out">{consoleLog || '(no output yet — run a command or start/stop the machine)'}</pre>
+          </div>
         )}
       </div>
     </main>

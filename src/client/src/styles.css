@@ -133,6 +133,7 @@ p { margin: 0 0 8px; }
 .navdot-running { background: var(--green); box-shadow: 0 0 6px rgba(62, 201, 123, .6); }
 .navdot-error { background: var(--red); box-shadow: 0 0 6px rgba(239, 91, 91, .5); }
 .navdot-none { background: transparent; border: 1px solid #555c66; box-shadow: none; }
+.console-out { margin: 0 16px 16px; max-height: calc(100vh - 320px); overflow: auto; white-space: pre-wrap; }
 @keyframes pulse { from { opacity: .4; } to { opacity: 1; } }
 .pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px;

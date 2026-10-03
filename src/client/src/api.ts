@@ -1,5 +1,5 @@
 import type {
-  AppSettings, ContainerInfo, DeployResult, DirListing, BrunoCollection, DbInfo, DepGraph, DepsInfo, DiagReport, EngineInfo, GrafanaLogLine, GrafanaSettings, GrafanaTestResult, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
+  AppSettings, ContainerInfo, ContainerExecResult, DeployResult, DirListing, BrunoCollection, DbInfo, DepGraph, DepsInfo, DiagReport, EngineInfo, GrafanaLogLine, GrafanaSettings, GrafanaTestResult, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
   KeycloakInfo, LogLine, ProcState, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult, SrDbStatus, SrTableData, StartMode
 } from '../../shared/types'
 
@@ -108,7 +108,8 @@ export const api = {
     action: (id: string, action: string, force = false) => req<string>('POST', `/api/containers/${enc(id)}/${action}`, { force }),
     logs: (id: string) => req<ProcState>('POST', `/api/containers/${enc(id)}/logs`),
     removeImage: (id: string, force = false) => req<string>('DELETE', `/api/containers/images/${enc(id)}${force ? '?force=1' : ''}`),
-    machine: (name: string, action: 'start' | 'stop') => req<string>('POST', `/api/containers/machine/${enc(name || '_default')}/${action}`)
+    machine: (name: string, action: 'start' | 'stop') => req<string>('POST', `/api/containers/machine/${enc(name || '_default')}/${action}`),
+    exec: (args: string[]) => req<ContainerExecResult>('POST', '/api/containers/exec', { args })
   },
   pubsub: {
     info: () => req<PubSubInfo>('GET', '/api/pubsub/info'),
