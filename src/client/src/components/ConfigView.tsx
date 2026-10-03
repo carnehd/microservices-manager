@@ -123,7 +123,7 @@ export function ConfigView({
           {svc.kind === 'spring-boot' && (
             <label>
               Dependencies (service names, comma-separated) — used by "Start with dependencies"
-              <input className="input mono" value={dependsOn} onChange={(e) => setDependsOn(e.target.value)} placeholder={svc.dependsOn?.length ? `suggested: ${svc.dependsOn.join(', ')}` : 'e.g. product-service, user-service'} />
+              <input className="input mono" value={dependsOn} onChange={(e) => setDependsOn(e.target.value)} placeholder={svc.dependsOn?.length ? `suggested: ${svc.dependsOn.join(', ')}` : 'e.g. service-a, service-b'} />
               {svc.dependsOn?.length ? <span className="muted small">inferred from the URLs: {svc.dependsOn.join(', ')} — empty above = use these</span> : <span className="muted small">none inferred from the config URLs</span>}
             </label>
           )}

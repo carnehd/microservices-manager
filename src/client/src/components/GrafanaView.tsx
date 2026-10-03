@@ -109,7 +109,7 @@ export function GrafanaView({ settings, onSaveSettings, notify, fail }: {
           </label>
         </div>
         <label className="field"><span>Query (LogQL)</span>
-          <input className="input mono" placeholder={'{app="ms-cliente-perfil"}'} value={form.query ?? ''} onChange={(e) => set('query', e.target.value)} />
+          <input className="input mono" placeholder={'{app="my-service"}'} value={form.query ?? ''} onChange={(e) => set('query', e.target.value)} />
         </label>
         <div className="grafana-actions">
           <button className="btn btn-sm" disabled={busy !== null} onClick={test}>Test connection</button>

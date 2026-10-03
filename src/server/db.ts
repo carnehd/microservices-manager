@@ -9,7 +9,7 @@ import { mkdirSync } from 'fs'
 
 const execFileP = promisify(execFile)
 const ID_RE = /^[A-Za-z_][\w$]*$/ // identificadores simples (base de dados / role)
-const SR_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/ // nomes de BD/schema de serviços SR (permite '-', ex. nsi-rd-sr-operacao)
+const SR_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/ // nomes de BD/schema de serviços SR (letras/dígitos, permite '_' e '-')
 
 function cmd(): string {
   return getSettings().containerCommand?.trim() || 'podman'

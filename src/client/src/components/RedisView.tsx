@@ -227,7 +227,7 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
               <section>
                 <h3>Console</h3>
                 <div className="row">
-                  <input className="input mono grow" placeholder="e.g. HGETALL exemplo:cliente:1 · KEYS sessao:* · INFO memory" value={cmd} onChange={(e) => setCmd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && runCmd()} />
+                  <input className="input mono grow" placeholder="e.g. HGETALL user:1 · KEYS session:* · INFO memory" value={cmd} onChange={(e) => setCmd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && runCmd()} />
                   <button className="btn btn-sm btn-primary" disabled={!!busy || !cmd.trim()} onClick={runCmd}>Run</button>
                 </div>
                 {cmdOut && <pre className="resp-body">{cmdOut}</pre>}

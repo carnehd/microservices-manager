@@ -226,7 +226,7 @@ export interface GrafanaSettings {
   datasourceUid?: string
   /** tipo do datasource (por omissão loki) */
   datasourceType?: string
-  /** consulta LogQL que seleciona os logs dos microserviços, ex.: {app="ms-cliente-perfil"} */
+  /** consulta LogQL que seleciona os logs dos microserviços, ex.: {app="my-service"} */
   query?: string
   /** Org ID do Grafana (opcional; só se houver várias organizações) */
   orgId?: number

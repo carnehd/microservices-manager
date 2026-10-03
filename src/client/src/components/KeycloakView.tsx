@@ -23,14 +23,15 @@ export function KeycloakView({
   const [tab, setTab] = useState<Tab>('logs')
   const [info, setInfo] = useState<KeycloakInfo | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  // Base URL onde corre o web-app dos portais de teste (node serve.mjs em examples/web-app)
-  const [portalsBase, setPortalsBase] = useState(() => {
-    try { return localStorage.getItem('msm.portalsBase') || 'http://localhost:3001' } catch { return 'http://localhost:3001' }
+  // Links de teste definidos pelo utilizador (nome + URL), guardados no browser. Nada é hardcoded:
+  // cada projeto/cópia define os seus (ex. páginas de login dos seus portais/clients).
+  const [links, setLinks] = useState<Array<{ name: string; url: string }>>(() => {
+    try { return JSON.parse(localStorage.getItem('msm.kcLinks') || '[]') } catch { return [] }
   })
-  const openPortal = (page: string): void => {
-    const base = portalsBase.trim().replace(/\/+$/, '')
-    try { localStorage.setItem('msm.portalsBase', base) } catch { /* ignore */ }
-    api.openExternal(`${base}/${page}`)
+  const [editLinks, setEditLinks] = useState(false)
+  const saveLinks = (next: Array<{ name: string; url: string }>): void => {
+    setLinks(next)
+    try { localStorage.setItem('msm.kcLinks', JSON.stringify(next)) } catch { /* ignore */ }
   }
   const state = states[KC_ID]
   const kc = settings.keycloak
@@ -134,15 +135,26 @@ export function KeycloakView({
         <button className="btn" disabled={!info?.valid || !!busy} title="Deletes and recreates the container with the current image/folders/port from Settings (data stays on disk)"
           onClick={() => { if (confirm(`Recreate the container ${kc.containerName}? Data (H2) and providers stay on disk.`)) void run('recreate', api.kcRecreate, () => void refreshInfo()) }}>Recreate container</button>
         <span className="grow" />
-        <button className="btn" disabled={!running} onClick={() => openPortal('backoffice.html?login')} title={`${portalsBase}/backoffice.html — login no client cga_backoffice`}>↗ Login Backoffice</button>
-        <button className="btn" disabled={!running} onClick={() => openPortal('cga-directa.html?login')} title={`${portalsBase}/cga-directa.html — login no client cga_directa`}>↗ Login CGA Directa</button>
+        {links.map((l, i) => l.url && <button key={i} className="btn" onClick={() => api.openExternal(l.url)} title={l.url}>↗ {l.name || l.url}</button>)}
+        <button className="btn" onClick={() => setEditLinks((v) => !v)} title="Add/edit test login links (per browser)">{editLinks ? 'Done' : '＋ Links'}</button>
         <button className="btn" onClick={() => api.openExternal(adminUrl)} title={adminUrl}>Admin console</button>
       </div>
 
-      <div className="actions">
-        <span className="muted small">Portais de teste · base URL do web-app</span>
-        <input className="input mono" style={{ width: 190 }} value={portalsBase} onChange={(e) => setPortalsBase(e.target.value)} title="URL where the web-app (examples/web-app · node serve.mjs) is running" />
-      </div>
+      {editLinks && (
+        <div className="config">
+          <section>
+            <div className="row"><span className="muted small">Test login links — name + URL (saved in this browser). Each project defines its own.</span></div>
+            {links.map((l, i) => (
+              <div className="row" key={i}>
+                <input className="input" style={{ width: 160 }} placeholder="name (e.g. My portal)" value={l.name} onChange={(e) => saveLinks(links.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                <input className="input mono grow" placeholder="https://localhost:3001/login" value={l.url} onChange={(e) => saveLinks(links.map((x, j) => j === i ? { ...x, url: e.target.value } : x))} spellCheck={false} />
+                <button className="btn btn-sm btn-ghost" title="remove" onClick={() => saveLinks(links.filter((_, j) => j !== i))}>✕</button>
+              </div>
+            ))}
+            <div className="row"><button className="btn btn-sm" onClick={() => saveLinks([...links, { name: '', url: '' }])}>＋ Add link</button></div>
+          </section>
+        </div>
+      )}
       {info && info.keycloakContainers.filter((c) => c.name !== kc.containerName).length > 0 && (
         <div className="actions">
           <span className="muted small">Other Keycloak containers found:</span>
