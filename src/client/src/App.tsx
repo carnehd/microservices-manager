@@ -5,7 +5,6 @@ import { useLogs } from './hooks'
 import { ContainersView } from './components/ContainersView'
 import { KeycloakView } from './components/KeycloakView'
 import { DiagnosticsView } from './components/DiagnosticsView'
-import { DatabaseView } from './components/DatabaseView'
 import { GrafanaView } from './components/GrafanaView'
 import { PubSubView } from './components/PubSubView'
 import { MapView } from './components/MapView'
@@ -17,7 +16,7 @@ import { Toast, type ToastMsg } from './components/Toast'
 import { FolderPicker } from './components/FolderPicker'
 import { StatusDot, isActive } from './components/common'
 
-type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics' | 'map' | 'db' | 'grafana' | 'pubsub'
+type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics' | 'map' | 'grafana' | 'pubsub'
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -211,7 +210,6 @@ export default function App() {
             <StatusDot status={states.keycloak?.status} /> Keycloak
           </button>
           <button className={view === 'containers' ? 'active' : ''} onClick={() => setView('containers')}>Containers</button>
-          <button className={view === 'db' ? 'active' : ''} onClick={() => setView('db')}>Database</button>
           <button className={view === 'redis' ? 'active' : ''} onClick={() => setView('redis')}>Redis</button>
           <button className={view === 'pubsub' ? 'active' : ''} onClick={() => setView('pubsub')}>Pub/Sub</button>
           <button className={view === 'grafana' ? 'active' : ''} onClick={() => setView('grafana')}>Logs (Grafana)</button>
@@ -268,7 +266,6 @@ export default function App() {
           <KeycloakView settings={settings} scan={scan} states={states} logs={logs} onSaveSettings={saveSettings} notify={notify} fail={fail} />
         )}
         {view === 'containers' && <ContainersView logs={logs} states={states} notify={notify} fail={fail} />}
-        {view === 'db' && <DatabaseView settings={settings} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
         {view === 'redis' && <RedisView notify={notify} fail={fail} />}
         {view === 'grafana' && <GrafanaView settings={settings} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
         {view === 'pubsub' && <PubSubView settings={settings} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
