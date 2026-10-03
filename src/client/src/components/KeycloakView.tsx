@@ -134,17 +134,14 @@ export function KeycloakView({
         <button className="btn" disabled={!info?.valid || !!busy} title="Deletes and recreates the container with the current image/folders/port from Settings (data stays on disk)"
           onClick={() => { if (confirm(`Recreate the container ${kc.containerName}? Data (H2) and providers stay on disk.`)) void run('recreate', api.kcRecreate, () => void refreshInfo()) }}>Recreate container</button>
         <span className="grow" />
+        <button className="btn" disabled={!running} onClick={() => openPortal('backoffice.html?login')} title={`${portalsBase}/backoffice.html — login no client cga_backoffice`}>↗ Login Backoffice</button>
+        <button className="btn" disabled={!running} onClick={() => openPortal('cga-directa.html?login')} title={`${portalsBase}/cga-directa.html — login no client cga_directa`}>↗ Login CGA Directa</button>
         <button className="btn" onClick={() => api.openExternal(adminUrl)} title={adminUrl}>Admin console</button>
       </div>
 
       <div className="actions">
-        <span className="muted small">Test login portals:</span>
-        <button className="btn" disabled={!running} onClick={() => openPortal('backoffice.html?login')} title={`${portalsBase}/backoffice.html — login no client cga_backoffice`}>↗ Login Backoffice</button>
-        <button className="btn" disabled={!running} onClick={() => openPortal('cga-directa.html?login')} title={`${portalsBase}/cga-directa.html — login no client cga_directa`}>↗ Login CGA Directa</button>
-        <span className="grow" />
-        <label className="inline">base
-          <input className="input mono" style={{ width: 190 }} value={portalsBase} onChange={(e) => setPortalsBase(e.target.value)} title="URL where the web-app (examples/web-app · node serve.mjs) is running" />
-        </label>
+        <span className="muted small">Portais de teste · base URL do web-app</span>
+        <input className="input mono" style={{ width: 190 }} value={portalsBase} onChange={(e) => setPortalsBase(e.target.value)} title="URL where the web-app (examples/web-app · node serve.mjs) is running" />
       </div>
       {info && info.keycloakContainers.filter((c) => c.name !== kc.containerName).length > 0 && (
         <div className="actions">

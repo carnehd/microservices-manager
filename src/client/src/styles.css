@@ -129,6 +129,10 @@ p { margin: 0 0 8px; }
 .dot-running { background: var(--green); box-shadow: 0 0 6px rgba(62, 201, 123, .6); }
 .dot-starting, .dot-stopping { background: var(--amber); animation: pulse 1s infinite alternate; }
 .dot-crashed { background: var(--red); }
+.navdot { margin-right: 2px; }
+.navdot-running { background: var(--green); box-shadow: 0 0 6px rgba(62, 201, 123, .6); }
+.navdot-error { background: var(--red); box-shadow: 0 0 6px rgba(239, 91, 91, .5); }
+.navdot-none { background: transparent; border: 1px solid #555c66; box-shadow: none; }
 @keyframes pulse { from { opacity: .4; } to { opacity: 1; } }
 .pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px;

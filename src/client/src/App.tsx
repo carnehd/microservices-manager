@@ -14,7 +14,7 @@ import { SettingsView } from './components/SettingsView'
 import { Sidebar } from './components/Sidebar'
 import { Toast, type ToastMsg } from './components/Toast'
 import { FolderPicker } from './components/FolderPicker'
-import { StatusDot, isActive } from './components/common'
+import { NavDot, type NavState, isActive } from './components/common'
 
 type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics' | 'map' | 'grafana' | 'pubsub'
 
@@ -44,6 +44,7 @@ export default function App() {
   const [kcProviders, setKcProviders] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<ToastMsg | null>(null)
   const [picker, setPicker] = useState<{ initial?: string; resolve: (dir: string | null) => void } | null>(null)
+  const [navDots, setNavDots] = useState<{ keycloak: NavState; containers: NavState; redis: NavState; pubsub: NavState }>({ keycloak: 'none', containers: 'none', redis: 'none', pubsub: 'none' })
   const logs = useLogs()
 
   const notify = useCallback((text: string, kind: ToastMsg['kind'] = 'info') => setToast({ id: Date.now(), text, kind }), [])
@@ -118,6 +119,22 @@ export default function App() {
     const t = setInterval(() => void refreshKcProviders(), 15_000)
     return () => clearInterval(t)
   }, [scan, states.keycloak?.status, refreshKcProviders])
+  // Bolinhas de estado da navegação (Keycloak / Containers / Redis / Pub/Sub): verde a correr, vermelho erro, sem cor parado.
+  useEffect(() => {
+    let alive = true
+    const tick = async (): Promise<void> => {
+      const [kc, cts, rd, ps] = await Promise.allSettled([api.kcInfo(), api.containers.list(), api.redis.info(), api.pubsub.info()])
+      if (!alive) return
+      const keycloak: NavState = kc.status === 'fulfilled' ? (kc.value.container?.running ? 'running' : kc.value.engineError ? 'error' : 'none') : 'error'
+      const containers: NavState = cts.status === 'fulfilled' ? (cts.value.some((c) => c.state === 'running') ? 'running' : 'none') : 'error'
+      const redis: NavState = rd.status === 'fulfilled' ? (rd.value.connected ? 'running' : rd.value.error ? 'error' : 'none') : 'error'
+      const pubsub: NavState = ps.status === 'fulfilled' ? (ps.value.running ? 'running' : ps.value.error || !ps.value.engineOk ? 'error' : 'none') : 'error'
+      setNavDots({ keycloak, containers, redis, pubsub })
+    }
+    void tick()
+    const t = setInterval(() => void tick(), 7_000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
 
   const saveSettings = useCallback(async (patch: Partial<AppSettings>): Promise<AppSettings | null> => {
     try {
@@ -207,11 +224,17 @@ export default function App() {
           </button>
           <button className={view === 'map' ? 'active' : ''} onClick={() => setView('map')}>Map</button>
           <button className={view === 'keycloak' ? 'active' : ''} onClick={() => setView('keycloak')}>
-            <StatusDot status={states.keycloak?.status} /> Keycloak
+            <NavDot state={navDots.keycloak} /> Keycloak
           </button>
-          <button className={view === 'containers' ? 'active' : ''} onClick={() => setView('containers')}>Containers</button>
-          <button className={view === 'redis' ? 'active' : ''} onClick={() => setView('redis')}>Redis</button>
-          <button className={view === 'pubsub' ? 'active' : ''} onClick={() => setView('pubsub')}>Pub/Sub</button>
+          <button className={view === 'containers' ? 'active' : ''} onClick={() => setView('containers')}>
+            <NavDot state={navDots.containers} /> Containers
+          </button>
+          <button className={view === 'redis' ? 'active' : ''} onClick={() => setView('redis')}>
+            <NavDot state={navDots.redis} /> Redis
+          </button>
+          <button className={view === 'pubsub' ? 'active' : ''} onClick={() => setView('pubsub')}>
+            <NavDot state={navDots.pubsub} /> Pub/Sub
+          </button>
           <button className={view === 'grafana' ? 'active' : ''} onClick={() => setView('grafana')}>Logs (Grafana)</button>
           <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Settings</button>
           <button className={view === 'diagnostics' ? 'active' : ''} onClick={() => setView('diagnostics')}>Diagnostics</button>

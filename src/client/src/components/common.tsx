@@ -24,6 +24,13 @@ export function StatusDot({ status }: { status?: ProcStatus }) {
   return <span className={`dot dot-${s}`} title={STATUS_LABEL[s]} />
 }
 
+export type NavState = 'running' | 'error' | 'none'
+const NAV_LABEL: Record<NavState, string> = { running: 'a correr', error: 'com erro', none: 'parado' }
+/** Bolinha de estado para a navegação: verde = a correr, vermelho = erro, sem cor = nada a correr. */
+export function NavDot({ state }: { state: NavState }) {
+  return <span className={`dot navdot navdot-${state}`} title={NAV_LABEL[state]} />
+}
+
 export function Badge({
   children, tone = 'muted', title
 }: { children: ReactNode; tone?: 'muted' | 'blue' | 'green' | 'amber' | 'red' | 'purple'; title?: string }) {
