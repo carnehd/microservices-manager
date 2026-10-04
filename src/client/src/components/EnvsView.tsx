@@ -23,6 +23,7 @@ export function EnvsView({
   const [target, setTarget] = useState('custom')
   const [selectedEnv, setSelectedEnv] = useState('')
   const [onlyDiff, setOnlyDiff] = useState(false)
+  const [search, setSearch] = useState('')
   const [values, setValues] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [generated, setGenerated] = useState<{ file: string; warnings: string[] } | null>(null)
@@ -57,7 +58,12 @@ export function EnvsView({
     for (const key of Object.keys(info.defaultValues)) if (!map.has(key)) map.set(key, { key, path: key.split('.'), values: {} })
     return [...map.values()].sort((a, b) => a.key.localeCompare(b.key))
   }, [info])
-  const rows = useMemo(() => (onlyDiff ? allKeys.filter((k) => new Set(sources.map((p) => k.values[p])).size > 1) : allKeys), [allKeys, onlyDiff, sources])
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    let r = onlyDiff ? allKeys.filter((k) => new Set(sources.map((p) => k.values[p])).size > 1) : allKeys
+    if (q) r = r.filter((k) => k.key.toLowerCase().includes(q) || Object.values(k.values).some((v) => (v ?? '').toLowerCase().includes(q)))
+    return r
+  }, [allKeys, onlyDiff, sources, search])
   const targetName = target.trim()
   const usedAtStart = !!targetName && settings.profile === targetName
   const ext = info?.files[base]?.slice(info.files[base].lastIndexOf('.')) ?? '.yml'
@@ -147,7 +153,9 @@ export function EnvsView({
 
       <section>
         <div className="row">
-          <span className="muted small">{rows.length} {rows.length === 1 ? 'variable' : 'variables'}{onlyDiff ? ` (of ${allKeys.length})` : ''}</span>
+          <input className="input mono" style={{ maxWidth: 260 }} placeholder="search variable or value…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {search && <button className="btn btn-sm btn-ghost" onClick={() => setSearch('')} title="clear search">✕</button>}
+          <span className="muted small">{rows.length} {rows.length === 1 ? 'variable' : 'variables'}{rows.length < allKeys.length ? ` of ${allKeys.length}` : ''}</span>
           <span className="grow" />
           <label className="check"><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> only differences</label>
         </div>
