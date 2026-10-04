@@ -205,6 +205,14 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
           ))}
         </div>
         {editing && <p className="muted small">Override the values detected in the microservice (application.yaml / docker-compose). Used to create/check the database.</p>}
+        {svc.srDatabase.detected && (
+          <div className="srdb-detected">
+            <div className="muted small">Read from the microservice to create the database:</div>
+            {svc.srDatabase.detected.databaseFrom && <div className="small mono">• <b>database</b> ← {svc.srDatabase.detected.databaseFrom}</div>}
+            {svc.srDatabase.detected.schemaFrom && <div className="small mono">• <b>schema</b> ← {svc.srDatabase.detected.schemaFrom}</div>}
+            {svc.srDatabase.detected.liquibaseFrom && <div className="small mono">• <b>liquibase</b> ← {svc.srDatabase.detected.liquibaseFrom}</div>}
+          </div>
+        )}
       </div>
 
       {/* ── Estado + Ações ──────────────────────────────── */}

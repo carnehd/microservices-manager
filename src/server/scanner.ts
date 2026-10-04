@@ -322,18 +322,26 @@ async function analyzeProject(dir: string, root: string): Promise<{ leaf?: Servi
     // Microserviço "SR": database/schema próprios + tabelas geridas por Liquibase.
     // A config da BD vem por env vars (docker-compose) ou dos defaults dos placeholders em application.yaml.
     const compose = await readComposeDbEnv(dir)
-    const liquibase =
-      !!config['spring.liquibase.change-log'] ||
-      deps.some((d) => d.a === 'liquibase-core') ||
-      existsSync(join(resources, 'db', 'changelog'))
+    const liquibaseFrom =
+      config['spring.liquibase.change-log'] ? `spring.liquibase.change-log = ${config['spring.liquibase.change-log']}` :
+      deps.some((d) => d.a === 'liquibase-core') ? 'dependência liquibase-core (pom.xml)' :
+      existsSync(join(resources, 'db', 'changelog')) ? 'pasta src/main/resources/db/changelog' : undefined
+    const liquibase = !!liquibaseFrom
+    const databaseFrom =
+      compose?.env.DB_CONNECTION_STRING ? `docker-compose: DB_CONNECTION_STRING = ${compose.env.DB_CONNECTION_STRING}` :
+      config['spring.datasource.url'] ? `application.yaml: spring.datasource.url = ${config['spring.datasource.url']}` : undefined
     const database = dbNameFromJdbc(compose?.env.DB_CONNECTION_STRING) ?? dbNameFromJdbc(placeholderDefault(config['spring.datasource.url']))
+    const schemaFrom =
+      compose?.env.DB_SCHEMA ? `docker-compose: DB_SCHEMA = ${compose.env.DB_SCHEMA}` :
+      config['spring.liquibase.default-schema'] ? `application.yaml: spring.liquibase.default-schema = ${config['spring.liquibase.default-schema']}` :
+      config['spring.jpa.properties.hibernate.default_schema'] ? `application.yaml: spring.jpa.properties.hibernate.default_schema = ${config['spring.jpa.properties.hibernate.default_schema']}` : undefined
     const schema =
       compose?.env.DB_SCHEMA ??
       placeholderDefault(config['spring.liquibase.default-schema']) ??
       placeholderDefault(config['spring.jpa.properties.hibernate.default_schema'])
     if (liquibase && database && schema) {
       const httpPort = compose?.httpPort ?? toInt(placeholderDefault(config['server.port']))
-      info.srDatabase = { database, schema, httpPort, liquibase: true, source: compose ? 'docker-compose.yaml' : 'application.yaml' }
+      info.srDatabase = { database, schema, httpPort, liquibase: true, source: compose ? 'docker-compose.yaml' : 'application.yaml', detected: { databaseFrom, schemaFrom, liquibaseFrom } }
       if (httpPort) info.port = httpPort
     }
   }

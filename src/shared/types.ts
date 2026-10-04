@@ -19,6 +19,15 @@ export interface SrDbInfo {
   liquibase: boolean
   /** de onde foi detetado (docker-compose.yaml / application.yaml) */
   source: string
+  /** o que foi lido no microserviço para chegar a estes valores (chave = valor) */
+  detected?: {
+    /** config de onde saiu o nome da base de dados */
+    databaseFrom?: string
+    /** config de onde saiu o schema */
+    schemaFrom?: string
+    /** o que indica que usa Liquibase */
+    liquibaseFrom?: string
+  }
 }
 
 export interface SrDbStatus {
