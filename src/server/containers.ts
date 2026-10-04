@@ -1,13 +1,37 @@
 import { execFile } from 'child_process'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { homedir } from 'os'
+import { join } from 'path'
 import { promisify } from 'util'
 import type { ContainerExecResult, ContainerInfo, EngineInfo, ImageInfo, MachineInfo } from '../shared/types'
 
 const execFileP = promisify(execFile)
 
+// As imagens que a app usa são públicas. Em máquinas sem Docker Desktop, o ~/.docker/config.json
+// pode ter "credsStore": "desktop", fazendo o podman invocar o helper docker-credential-desktop
+// (que não existe) e falhar o pull com "erro de credenciais". Apontamos o DOCKER_CONFIG/
+// REGISTRY_AUTH_FILE para uma config vazia e isolada → pulls anónimos, sem cred helper.
+let podmanEnvCache: NodeJS.ProcessEnv | null = null
+function podmanEnv(): NodeJS.ProcessEnv {
+  if (podmanEnvCache) return podmanEnvCache
+  try {
+    const dir = join(homedir(), '.config', 'microservices-manager', 'podman-auth')
+    mkdirSync(dir, { recursive: true })
+    const cfg = join(dir, 'config.json')
+    const auth = join(dir, 'auth.json')
+    if (!existsSync(cfg)) writeFileSync(cfg, '{"auths":{}}')
+    if (!existsSync(auth)) writeFileSync(auth, '{"auths":{}}')
+    podmanEnvCache = { ...process.env, DOCKER_CONFIG: dir, REGISTRY_AUTH_FILE: auth }
+  } catch {
+    podmanEnvCache = { ...process.env }
+  }
+  return podmanEnvCache
+}
+
 /** Corre o comando e devolve stdout; erros trazem o stderr do podman/docker (mensagens úteis). */
 async function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<string> {
   try {
-    const { stdout } = await execFileP(cmd, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, windowsHide: true })
+    const { stdout } = await execFileP(cmd, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, windowsHide: true, env: podmanEnv() })
     return stdout
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string }
@@ -30,7 +54,7 @@ export async function execContainerCommand(cmd: string, args: string[]): Promise
   const command = `${cmd} ${clean.join(' ')}`
   const start = Date.now()
   try {
-    const { stdout, stderr } = await execFileP(cmd, clean, { timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true })
+    const { stdout, stderr } = await execFileP(cmd, clean, { timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, env: podmanEnv() })
     return { command, stdout, stderr, code: 0, ms: Date.now() - start }
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string; code?: unknown }
