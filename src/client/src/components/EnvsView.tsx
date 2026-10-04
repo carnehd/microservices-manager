@@ -69,7 +69,6 @@ export function EnvsView({
   const ext = info?.files[base]?.slice(info.files[base].lastIndexOf('.')) ?? '.yml'
 
   // valor a usar: override escrito/copiado, senão o default do application.yaml base
-  const effective = (r: EnvsInfo['keys'][number]): string => (r.key in values ? values[r.key] : (defaults[r.key] ?? ''))
   const reset = (key: string): void => setValues((v) => { const n = { ...v }; delete n[key]; return n })
 
   // Liga o profile no arranque: cria o application-<target> (com os valores escolhidos) e
@@ -168,35 +167,33 @@ export function EnvsView({
                 <th className="env-col-head" title={info.files[env]}>
                   <span className="mono">{info.labels[env] || env || 'Environment'}</span>
                   {info.k8s.includes(env) && <span className="k8s-tag" title={info.files[env]}>k8s</span>}
+                  <span className="muted small"> · editable</span>
                 </th>
-                <th>Value to set</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
                 const envVal = r.values[env]
-                const hasEnv = envVal !== undefined
+                const edited = r.key in values
+                const shown = edited ? values[r.key] : (envVal ?? defaults[r.key] ?? '')
                 return (
                   <tr key={r.key}>
                     <td className="mono small">{r.key}</td>
                     <td className="mono small val-default" title={defaults[r.key] ?? 'does not exist in the base application.yaml'}>{defaults[r.key] ?? '—'}</td>
-                    <td className={`mono small val${hasEnv ? '' : ' missing'}`}
-                      title={hasEnv ? `${envVal} — click to copy to "Value to set"` : 'does not exist in this environment'}
-                      onClick={() => { if (hasEnv) setValues((v) => ({ ...v, [r.key]: envVal as string })) }}>
-                      {envVal ?? '—'}
-                    </td>
                     <td className="val-edit">
-                      <input className="input mono" value={effective(r)} onChange={(e) => setValues((v) => ({ ...v, [r.key]: e.target.value }))} title="value to use in the generated file" />
-                      {r.key in values && <button className="link small" title="reset to default value" onClick={() => reset(r.key)}>↺</button>}
+                      <input className={`input mono${edited ? ' edited' : ''}`} value={shown} placeholder={envVal ?? defaults[r.key] ?? ''}
+                        onChange={(e) => setValues((v) => ({ ...v, [r.key]: e.target.value }))}
+                        title={`value for "${info.labels[env] || env}" (used in the generated file)`} />
+                      {edited && <button className="link small" title="reset to the detected value" onClick={() => reset(r.key)}>↺</button>}
                     </td>
                   </tr>
                 )
               })}
-              {!rows.length && <tr><td colSpan={4} className="muted">{onlyDiff ? 'No variable differs between environments.' : 'No variables found.'}</td></tr>}
+              {!rows.length && <tr><td colSpan={3} className="muted">{onlyDiff ? 'No variable differs between environments.' : 'No variables found.'}</td></tr>}
             </tbody>
           </table>
         </div>
-        <p className="muted small">The <b>application.yaml (default)</b> column shows the base value (read only). Pick an environment in the header and click a cell to copy that value to <b>Value to set</b>, or type it by hand. The <span className="mono">↺</span> resets to the default.</p>
+        <p className="muted small">The <b>application.yaml (default)</b> column shows the base value (read only). The last column shows the value for the chosen environment — edit it directly to set the value for the generated file. The <span className="mono">↺</span> resets to the detected value.</p>
       </section>
     </div>
   )
