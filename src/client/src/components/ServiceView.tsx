@@ -152,7 +152,7 @@ export function ServiceView({
         {tab === 'jars' && <JarsView svc={svc} notify={notify} fail={fail} />}
         {tab === 'envs' && <EnvsView svc={svc} settings={ss} notify={notify} fail={fail} onChanged={onSettingsChanged} onSetProfile={async (p) => { await api.setEnvProfile(svc.id, p); await onSettingsChanged() }} />}
         {tab === 'deps' && <DepsView svc={svc} logs={logs} states={states} fail={fail} />}
-        {tab === 'srdb' && <SrDatabaseView svc={svc} settings={settings} running={running} notify={notify} fail={fail} />}
+        {tab === 'srdb' && <SrDatabaseView svc={svc} settings={settings} running={running} notify={notify} fail={fail} onSettingsChanged={onSettingsChanged} />}
         {tab === 'git' && <GitView svc={svc} notify={notify} fail={fail} onChanged={onGitChanged} />}
         {tab === 'config' && (
           <ConfigView svc={svc} settings={ss} defaultDebugPort={defaultDebugPort} onSave={(next) => onSaveServiceSettings(svc.id, next)} />

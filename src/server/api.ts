@@ -526,15 +526,19 @@ apiRouter.get('/services/:id/srdb', h((req) => srDbStatus(effectiveSrSpec(param(
 apiRouter.post('/services/:id/srdb/create', h((req) => createSrDb(effectiveSrSpec(param(req, 'id')), !!req.body?.reset)))
 apiRouter.post('/services/:id/srdb/drop', h((req) => dropSrDb(effectiveSrSpec(param(req, 'id')))))
 apiRouter.get('/services/:id/srdb/table', h((req) => srTableData(effectiveSrSpec(param(req, 'id')), str(req.query.name), Number(str(req.query.limit)) || 100)))
-// Guarda (ou limpa) o override database/schema detetado
+// Guarda (ou limpa) o override dos valores da BD (database/schema/host/port/user/password)
 apiRouter.put('/services/:id/srdb/spec', h((req) => {
   const id = param(req, 'id')
   findService(id) // valida que existe
-  const database = typeof req.body?.database === 'string' ? req.body.database.trim() : ''
-  const schema = typeof req.body?.schema === 'string' ? req.body.schema.trim() : ''
+  const f = (k: string): string => (typeof req.body?.[k] === 'string' ? (req.body[k] as string).trim() : '')
+  const over: Record<string, string> = {}
+  for (const k of ['database', 'schema', 'host', 'port', 'user', 'password']) {
+    const v = f(k)
+    if (v) over[k] = v
+  }
   const s = getSettings()
   const ss: ServiceSettings = { ...(s.services[id] ?? {}) }
-  if (database || schema) ss.srDb = { ...(database ? { database } : {}), ...(schema ? { schema } : {}) }
+  if (Object.keys(over).length) ss.srDb = over
   else delete ss.srDb
   saveSettings({ services: { ...s.services, [id]: ss } })
   return effectiveSrSpec(id)

@@ -19,8 +19,8 @@ function fmtCell(v: unknown): { text: string; empty: boolean } {
   return { text: text === '' ? '∅' : text, empty: text === '' }
 }
 
-export function SrDatabaseView({ svc, settings, running, notify, fail }: {
-  svc: ServiceInfo; settings: AppSettings; running: boolean; notify: Notify; fail: (e: unknown) => void
+export function SrDatabaseView({ svc, settings, running, notify, fail, onSettingsChanged }: {
+  svc: ServiceInfo; settings: AppSettings; running: boolean; notify: Notify; fail: (e: unknown) => void; onSettingsChanged?: () => Promise<void>
 }) {
   const [status, setStatus] = useState<SrDbStatus | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -30,8 +30,8 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
   const [tableBusy, setTableBusy] = useState(false)
   const [limit, setLimit] = useState(100)
   const [editing, setEditing] = useState(false)
-  const [editDb, setEditDb] = useState('')
-  const [editSchema, setEditSchema] = useState('')
+  const [showDetected, setShowDetected] = useState(false)
+  const [edit, setEdit] = useState<Record<'host' | 'port' | 'database' | 'schema' | 'user' | 'password', string>>({ host: '', port: '', database: '', schema: '', user: '', password: '' })
 
   const refresh = useCallback(async () => {
     try {
@@ -131,40 +131,47 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
   // valores em uso = os detetados + overrides guardados (vêm no status.spec)
   const sr = status?.spec ?? svc.srDatabase
 
-  const startEdit = () => { setEditDb(sr.database); setEditSchema(sr.schema); setEditing(true) }
+  const pg = settings.postgres
+  const o = settings.services[svc.id]?.srDb ?? {}
+  // valores apresentados = override guardado, senão o detetado (database/schema) / Settings → Postgres (host/port/user/password)
+  const host = o.host || 'localhost'
+  const port = o.port || String(pg.port)
+  const database = sr.database
+  const schema = sr.schema
+  const user = o.user || pg.superUser
+  const password = o.password || (pg.superPassword ?? '')
+  const jdbc = `jdbc:postgresql://${host}:${port}/${database}?currentSchema=${schema}`
+
+  type EK = 'host' | 'port' | 'database' | 'schema' | 'user' | 'password'
+  const startEdit = () => { setEdit({ host, port, database, schema, user, password }); setEditing(true) }
+  const afterSave = async () => { setEditing(false); if (onSettingsChanged) await onSettingsChanged(); await refresh() }
   const saveSpec = async () => {
     setBusy('spec')
     try {
-      await api.srdb.saveSpec(svc.id, { database: editDb.trim(), schema: editSchema.trim() })
+      await api.srdb.saveSpec(svc.id, { host: edit.host.trim(), port: edit.port.trim(), database: edit.database.trim(), schema: edit.schema.trim(), user: edit.user.trim(), password: edit.password })
       notify('Database values updated', 'success')
-      setEditing(false)
-      await refresh()
+      await afterSave()
     } catch (e) { fail(e) } finally { setBusy(null) }
   }
   const resetSpec = async () => {
     setBusy('spec')
     try {
-      await api.srdb.saveSpec(svc.id, {}) // limpa override → volta ao detetado
+      await api.srdb.saveSpec(svc.id, {}) // limpa override → volta ao detetado / Settings
       notify('Back to the detected values', 'success')
-      setEditing(false)
-      await refresh()
+      await afterSave()
     } catch (e) { fail(e) } finally { setBusy(null) }
   }
 
-  const pg = settings.postgres
-  const host = 'localhost'
-  const password = pg.superPassword ?? ''
-  const jdbc = `jdbc:postgresql://${host}:${pg.port}/${sr.database}?currentSchema=${sr.schema}`
-
-  const fields: Array<{ label: string; value: string; display?: React.ReactNode; extra?: React.ReactNode; editKey?: 'database' | 'schema' }> = [
-    { label: 'Host', value: host },
-    { label: 'Port', value: String(pg.port) },
-    { label: 'Database', value: sr.database, editKey: 'database' },
-    { label: 'Schema', value: sr.schema, editKey: 'schema' },
-    { label: 'User', value: pg.superUser },
+  const fields: Array<{ label: string; value: string; display?: React.ReactNode; extra?: React.ReactNode; editKey?: EK }> = [
+    { label: 'Host', value: host, editKey: 'host' },
+    { label: 'Port', value: port, editKey: 'port' },
+    { label: 'Database', value: database, editKey: 'database' },
+    { label: 'Schema', value: schema, editKey: 'schema' },
+    { label: 'User', value: user, editKey: 'user' },
     {
       label: 'Password',
       value: password,
+      editKey: 'password',
       display: password ? (showPassword ? password : '••••••••') : <span className="muted">(no password set)</span>,
       extra: password ? (
         <button className="btn btn-sm btn-ghost" onClick={() => setShowPassword((v) => !v)} title={showPassword ? 'Hide' : 'Show'}>
@@ -177,16 +184,28 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
 
   return (
     <div className="srdb-view">
+      <div className="srdb-top">
       {/* ── Ligação (DBeaver) ───────────────────────────── */}
       <div className="srdb-card">
-        <div className="row">
+        <div className="row" style={{ position: 'relative' }}>
           <h3 style={{ margin: 0 }}>Detected values <span className="muted small">({sr.source})</span></h3>
+          {svc.srDatabase.detected && (
+            <button className="srdb-help" title="What was read from the microservice to create the database" onClick={() => setShowDetected((v) => !v)}>ⓘ</button>
+          )}
+          {showDetected && svc.srDatabase.detected && (
+            <div className="srdb-popover" onClick={(e) => e.stopPropagation()}>
+              <div className="row"><b className="small">Read from the microservice to create the database</b><span className="grow" /><button className="btn btn-sm btn-ghost" onClick={() => setShowDetected(false)}>✕</button></div>
+              {svc.srDatabase.detected.databaseFrom && <div className="small mono">• <b>database</b> ← {svc.srDatabase.detected.databaseFrom}</div>}
+              {svc.srDatabase.detected.schemaFrom && <div className="small mono">• <b>schema</b> ← {svc.srDatabase.detected.schemaFrom}</div>}
+              {svc.srDatabase.detected.liquibaseFrom && <div className="small mono">• <b>liquibase</b> ← {svc.srDatabase.detected.liquibaseFrom}</div>}
+            </div>
+          )}
           <span className="grow" />
-          {!editing && <button className="btn btn-sm" onClick={startEdit} title="Edit the database/schema detected from the microservice">Edit</button>}
+          {!editing && <button className="btn btn-sm" onClick={startEdit} title="Edit the connection values (host, port, database, schema, user, password)">Edit</button>}
           {editing && <>
-            <button className="btn btn-sm btn-primary" disabled={busy !== null || !editDb.trim() || !editSchema.trim()} onClick={() => void saveSpec()}>{busy === 'spec' ? 'Saving…' : 'Save'}</button>
+            <button className="btn btn-sm btn-primary" disabled={busy !== null || !edit.database.trim() || !edit.schema.trim()} onClick={() => void saveSpec()}>{busy === 'spec' ? 'Saving…' : 'Save'}</button>
             <button className="btn btn-sm" onClick={() => setEditing(false)}>Cancel</button>
-            <button className="btn btn-sm btn-ghost" disabled={busy !== null} onClick={() => void resetSpec()} title="Back to the values detected from the microservice">Reset to detected</button>
+            <button className="btn btn-sm btn-ghost" disabled={busy !== null} onClick={() => void resetSpec()} title="Back to the detected values / Settings → Postgres">Reset to detected</button>
           </>}
         </div>
         <div className="srdb-fields">
@@ -194,8 +213,8 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
             <div className="srdb-field" key={f.label}>
               <span className="srdb-field-label">{f.label}</span>
               {editing && f.editKey ? (
-                <input className="input mono grow" value={f.editKey === 'database' ? editDb : editSchema}
-                  onChange={(e) => (f.editKey === 'database' ? setEditDb(e.target.value) : setEditSchema(e.target.value))} spellCheck={false} />
+                <input className="input mono grow" value={edit[f.editKey]}
+                  onChange={(e) => setEdit((prev) => ({ ...prev, [f.editKey!]: e.target.value }))} spellCheck={false} />
               ) : (
                 <span className="srdb-field-value mono">{f.display ?? f.value}</span>
               )}
@@ -204,18 +223,10 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
             </div>
           ))}
         </div>
-        {editing && <p className="muted small">Override the values detected in the microservice (application.yaml / docker-compose). Used to create/check the database.</p>}
-        {svc.srDatabase.detected && (
-          <div className="srdb-detected">
-            <div className="muted small">Read from the microservice to create the database:</div>
-            {svc.srDatabase.detected.databaseFrom && <div className="small mono">• <b>database</b> ← {svc.srDatabase.detected.databaseFrom}</div>}
-            {svc.srDatabase.detected.schemaFrom && <div className="small mono">• <b>schema</b> ← {svc.srDatabase.detected.schemaFrom}</div>}
-            {svc.srDatabase.detected.liquibaseFrom && <div className="small mono">• <b>liquibase</b> ← {svc.srDatabase.detected.liquibaseFrom}</div>}
-          </div>
-        )}
+        {editing && <p className="muted small">Host/Port/User/Password são a ligação (DBeaver + JDBC); Database/Schema são usados para criar/verificar a BD. Campos vazios voltam ao detetado / Settings → Postgres.</p>}
       </div>
 
-      {/* ── Estado + Ações ──────────────────────────────── */}
+      {/* ── Estado + Ações (à direita) ──────────────────── */}
       <div className="srdb-card">
         <h3>Status</h3>
         {!status && <div className="muted">Checking…</div>}
@@ -251,6 +262,7 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
           <p className="muted small">Postgres is not reachable. Make sure the container is running and that the Settings (container/port/superuser) point to it.</p>
         )}
         <p className="muted small">Flow: <b>Create database</b> → <b>Start</b> the service (Liquibase creates the tables) → view the data.</p>
+      </div>
       </div>
 
       {/* ── Tabelas (só leitura) ────────────────────────── */}

@@ -153,8 +153,8 @@ export interface ServiceSettings {
   debug?: boolean
   /** Última composição de perfis feita na app (para regenerar com as mesmas escolhas) */
   envMix?: EnvMix
-  /** Override dos valores da BD SR detetados (database/schema); vazio = usar o detetado */
-  srDb?: { database?: string; schema?: string }
+  /** Override dos valores da BD SR (ligação); campos vazios = usar o detetado / Settings → Postgres */
+  srDb?: { database?: string; schema?: string; host?: string; port?: string; user?: string; password?: string }
   jvmArgs?: string
   extraArgs?: string
   debugPort?: number

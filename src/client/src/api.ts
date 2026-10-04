@@ -66,7 +66,7 @@ export const api = {
     create: (id: string, reset = false) => req<string[]>('POST', `/api/services/${enc(id)}/srdb/create`, { reset }),
     drop: (id: string) => req<string[]>('POST', `/api/services/${enc(id)}/srdb/drop`),
     table: (id: string, name: string, limit = 100) => req<SrTableData>('GET', `/api/services/${enc(id)}/srdb/table?name=${enc(name)}&limit=${limit}`),
-    saveSpec: (id: string, spec: { database?: string; schema?: string }) => req<SrDbStatus['spec']>('PUT', `/api/services/${enc(id)}/srdb/spec`, spec)
+    saveSpec: (id: string, spec: { database?: string; schema?: string; host?: string; port?: string; user?: string; password?: string }) => req<SrDbStatus['spec']>('PUT', `/api/services/${enc(id)}/srdb/spec`, spec)
   },
   defaultDebugPort: (id: string) => req<number>('GET', `/api/services/${enc(id)}/debug-port`),
   envs: (id: string) => req<EnvsInfo>('GET', `/api/services/${enc(id)}/envs`),
