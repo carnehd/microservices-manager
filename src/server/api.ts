@@ -1,22 +1,24 @@
 import { Router, type Request, type Response } from 'express'
 import { promises as fs, readdirSync, statSync } from 'fs'
 import { basename, delimiter, join } from 'path'
-import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type StartMode } from '../shared/types'
+import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type SrDbInfo, type StartMode } from '../shared/types'
 import { addSseClient, broadcast } from './events'
 import { listDirs, openPath, openTerminal } from './fsapi'
-import { containerAction, containerState, engineInfo, ensureContainer, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
+import { containerAction, containerState, engineInfo, ensureContainer, execContainerCommand, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
 import * as redisOps from './redis'
 import { depsCommandArgs, listDeps } from './deps'
 import { parse as parseYaml } from 'yaml'
 import { runDiagnostics } from './diagnostics'
-import { composeEnv, listEnvs } from './envs'
+import { composeEnv, listEnvs, setBaseActiveProfile } from './envs'
 import * as gitOps from './git'
 import { listCollections } from './bruno'
-import { createDatabaseManual, createDatabases, dbInfo, listDatabases, runSql, setPasswordLookup, startPostgres } from './db'
+import { createDatabaseManual, createDatabases, createSrDb, dbInfo, dropSrDb, listDatabases, runSql, setPasswordLookup, srDbStatus, srTableData, startPostgres } from './db'
 import { KcAdmin, prepareRealmImport } from './keycloak'
 import { ProcessManager } from './processManager'
 import { findJar, scanFolder } from './scanner'
 import { dataDir, getSettings, saveSettings } from './settings'
+import { grafanaLogs, grafanaTest, mergeGrafana } from './grafana'
+import { clearInbox, createSubscription, createTopic, deleteSubscription, deleteTopic, getInbox, listSubscriptions, listTopics, markInboxRead, pollInbox, publishMessage, pubsubInfo, startPubsub } from './pubsub'
 
 const pm = new ProcessManager()
 const isWin = process.platform === 'win32'
@@ -46,7 +48,7 @@ function buildEnv(settings: AppSettings, extra?: Record<string, string>): Record
 
 function findService(id: string): ServiceInfo {
   const s = lastScan?.services.find((x) => x.id === id)
-  if (!s) throw new Error('Serviço não encontrado — faz um novo scan')
+  if (!s) throw new Error('Service not found — run a new scan')
   return s
 }
 
@@ -78,13 +80,15 @@ function startService(id: string, mode: StartMode): ProcState {
   let debugPort: number | undefined
 
   const skip = ss.skipTests !== false ? ['-DskipTests'] : []
-  if (mode === 'build') args.push(...skip, 'package')
-  else if (mode === 'clean-build') args.push('clean', ...skip, 'package')
-  else if (mode === 'clean-install') args.push('clean', ...skip, 'install')
+  // Toggle "spotless": corre spotless:apply antes de compilar/arrancar (formata o código primeiro).
+  const spot = ss.spotless ? ['spotless:apply'] : []
+  if (mode === 'build') args.push(...spot, ...skip, 'package')
+  else if (mode === 'clean-build') args.push('clean', ...spot, ...skip, 'package')
+  else if (mode === 'clean-install') args.push('clean', ...spot, ...skip, 'install')
   else if (mode === 'spotless') args.push('spotless:apply')
   else if (mode === 'run' || mode === 'debug') {
-    if (svc.kind !== 'spring-boot') throw new Error('Só projetos Spring Boot podem ser arrancados')
-    args.push('spring-boot:run')
+    if (svc.kind !== 'spring-boot') throw new Error('Only Spring Boot projects can be started')
+    args.push(...spot, 'spring-boot:run')
     if (ss.profile?.trim()) args.push(`-Dspring-boot.run.profiles=${ss.profile.trim()}`)
     if (ss.port) args.push(`-Dspring-boot.run.arguments=--server.port=${ss.port}`)
     const jvm: string[] = []
@@ -94,8 +98,31 @@ function startService(id: string, mode: StartMode): ProcState {
     }
     if (ss.jvmArgs?.trim()) jvm.push(ss.jvmArgs.trim())
     if (jvm.length) args.push(`-Dspring-boot.run.jvmArguments="${jvm.join(' ')}"`)
-  } else throw new Error(`Modo inválido: ${String(mode)}`)
+  } else throw new Error(`Invalid mode: ${String(mode)}`)
   if (ss.extraArgs?.trim()) args.push(ss.extraArgs.trim())
+
+  // Microserviço SR: injeta as env vars da BD (Host JVM) a partir do spec detetado + Postgres da app.
+  // O Liquibase cria as tabelas no arranque; a BD/schema são criados na tab "Base de Dados".
+  let srExtra: Record<string, string> = {}
+  if (svc.srDatabase && (mode === 'run' || mode === 'debug')) {
+    const pg = settings.postgres
+    const ps = settings.pubsub
+    const port = ss.port ?? svc.srDatabase.httpPort ?? 8100
+    srExtra = {
+      DB_CONNECTION_STRING: `jdbc:postgresql://localhost:${pg.port}/${svc.srDatabase.database}`,
+      DB_SCHEMA: svc.srDatabase.schema,
+      DB_DDL_USER: pg.superUser,
+      DB_DDL_PASSWORD: pg.superPassword ?? '',
+      DB_DML_USER: pg.superUser,
+      DB_DML_PASSWORD: pg.superPassword ?? '',
+      LOG_TYPE: 'console',
+      SERVER_PORT: String(port),
+      // Pub/Sub local: aponta o serviço ao emulador gerido pela app (separador Pub/Sub).
+      // Se o emulador não estiver a correr, o serviço arranca na mesma (o publisher fica desativado).
+      PUBSUB_EMULATOR_HOST: `localhost:${ps.port}`,
+      PUBSUB_PROJECT_ID: ps.projectId
+    }
+  }
 
   const mvn = [quote(mavenCommand(svc, settings)), ...mavenGlobalArgs(settings, ss)].join(' ')
   let commandLine = [mvn, ...args].join(' ')
@@ -108,7 +135,7 @@ function startService(id: string, mode: StartMode): ProcState {
     id,
     commandLine,
     cwd: svc.path,
-    env: buildEnv(settings, ss.env),
+    env: buildEnv(settings, { ...srExtra, ...ss.env }),
     mode,
     debugPort
   })
@@ -176,6 +203,7 @@ function followKeycloakLogs(): ProcState {
 
 async function startKeycloak(recreate = false): Promise<ProcState> {
   const kc = getSettings().keycloak
+  const ps = getSettings().pubsub
   const { providersDir, dataDir: dDir } = kcDirs()
   await fs.mkdir(providersDir, { recursive: true })
   await fs.mkdir(dDir, { recursive: true })
@@ -188,7 +216,12 @@ async function startKeycloak(recreate = false): Promise<ProcState> {
       KC_HTTP_PORT: String(kc.httpPort),
       // KEYCLOAK_ADMIN* (≤ 25) e KC_BOOTSTRAP_ADMIN_* (≥ 26): usados só no primeiro arranque para criar o admin
       KEYCLOAK_ADMIN: kc.adminUser, KEYCLOAK_ADMIN_PASSWORD: kc.adminPassword,
-      KC_BOOTSTRAP_ADMIN_USERNAME: kc.adminUser, KC_BOOTSTRAP_ADMIN_PASSWORD: kc.adminPassword
+      KC_BOOTSTRAP_ADMIN_USERNAME: kc.adminUser, KC_BOOTSTRAP_ADMIN_PASSWORD: kc.adminPassword,
+      // Para SPIs que falam com o emulador Pub/Sub (ex. keycloak-pubsub-login-spi): do container
+      // o emulador (publicado no host) alcança-se por host.containers.internal:<porta-host>.
+      PUBSUB_EMULATOR_HOST: `host.containers.internal:${ps.port}`,
+      PUBSUB_PROJECT_ID: ps.projectId,
+      PUBSUB_LOGIN_TOPIC: 'login-events'
     },
     // keep-id: o utilizador keycloak (uid 1000) dentro do container é o teu utilizador no disco → escreve na H2 montada
     runArgs: ['--userns=keep-id:uid=1000,gid=1000'],
@@ -259,11 +292,11 @@ async function deploySpi(id: string, opts: { build: boolean; restart: boolean; j
   if (opts.build) {
     startService(id, 'build')
     const code = await pm.waitForExit(id)
-    if (code !== 0) throw new Error(`Build de ${svc.name} falhou (exit ${code}) — vê os logs do serviço`)
+    if (code !== 0) throw new Error(`Build of ${svc.name} failed (exit ${code}) — see the service logs`)
   }
   const info = jarInfo(svc)
   const chosen = opts.jar && !opts.build ? info.candidates.find((j) => j.name === opts.jar) : info.candidates[0]
-  if (!chosen) throw new Error(opts.jar ? `Jar ${opts.jar} já não existe em target/` : `Não encontrei nenhum .jar em ${join(svc.moduleDir ?? svc.path, 'target')} — compila primeiro (IntelliJ ou "Build & instalar")`)
+  if (!chosen) throw new Error(opts.jar ? `Jar ${opts.jar} no longer exists in target/` : `No .jar found in ${join(svc.moduleDir ?? svc.path, 'target')} — build first (IntelliJ or "Build & install")`)
   await fs.mkdir(providersDir, { recursive: true })
   const dest = join(providersDir, chosen.name)
   const removed: string[] = []
@@ -275,8 +308,8 @@ async function deploySpi(id: string, opts: { build: boolean; restart: boolean; j
     }
   }
   await fs.copyFile(chosen.path, dest)
-  pm.log(KC_ID, 'system', `📦 provider instalado: ${dest}${opts.build ? '' : ' (jar já compilado)'}${removed.length ? ` · removido: ${removed.join(', ')}` : ''}`)
-  pm.log(id, 'system', `📦 ${chosen.name} copiado para ${providersDir}`)
+  pm.log(KC_ID, 'system', `📦 provider installed: ${dest}${opts.build ? '' : ' (jar already compiled)'}${removed.length ? ` · removed: ${removed.join(', ')}` : ''}`)
+  pm.log(id, 'system', `📦 ${chosen.name} copied to ${providersDir}`)
   await rescanQuiet()
   let restarted = false
   if (opts.restart) {
@@ -288,7 +321,7 @@ async function deploySpi(id: string, opts: { build: boolean; restart: boolean; j
 }
 
 async function removeProviderJar(name: string): Promise<void> {
-  if (name.includes('/') || name.includes('\\') || !name.endsWith('.jar')) throw new Error('Nome de provider inválido')
+  if (name.includes('/') || name.includes('\\') || !name.endsWith('.jar')) throw new Error('Invalid provider name')
   await fs.rm(join(kcDirs().providersDir, name))
 }
 
@@ -303,12 +336,12 @@ function admin(): KcAdmin {
 /** Pasta onde ficam as exportações de realms (dentro da pasta raiz dos microserviços, para ir para o git). */
 function realmsDir(): string {
   const root = getSettings().rootFolder
-  if (!root) throw new Error('Pasta raiz não definida')
+  if (!root) throw new Error('Root folder not set')
   return join(root, 'keycloak-realms')
 }
 
 const safeName = (name: string): string => {
-  if (!/^[\w.-]+$/.test(name)) throw new Error(`Nome inválido: ${name}`)
+  if (!/^[\w.-]+$/.test(name)) throw new Error(`Invalid name: ${name}`)
   return name
 }
 
@@ -364,6 +397,30 @@ apiRouter.put('/settings', h(async (req) => {
   return saveSettings(req.body as Partial<AppSettings>)
 }))
 
+// Pub/Sub local (emulador do Google Cloud em container gerido pela app)
+apiRouter.get('/pubsub/info', h(() => pubsubInfo()))
+apiRouter.post('/pubsub/start', h(() => startPubsub()))
+apiRouter.post('/pubsub/stop', h(() => containerAction(containerCmd(), 'stop', getSettings().pubsub.containerName)))
+apiRouter.get('/pubsub/topics', h(() => listTopics()))
+apiRouter.post('/pubsub/topics', h((req) => createTopic(str(req.body?.name))))
+apiRouter.delete('/pubsub/topics/:name', h((req) => deleteTopic(param(req, 'name'))))
+apiRouter.post('/pubsub/topics/:name/publish', h((req) => publishMessage(param(req, 'name'), str(req.body?.data), (req.body?.attributes && typeof req.body.attributes === 'object' ? req.body.attributes : undefined) as Record<string, string> | undefined)))
+apiRouter.get('/pubsub/subscriptions', h(() => listSubscriptions()))
+apiRouter.post('/pubsub/subscriptions', h((req) => createSubscription(str(req.body?.name), str(req.body?.topic))))
+apiRouter.delete('/pubsub/subscriptions/:name', h((req) => deleteSubscription(param(req, 'name'))))
+apiRouter.get('/pubsub/subscriptions/:name/inbox', h((req) => getInbox(param(req, 'name'))))
+apiRouter.post('/pubsub/subscriptions/:name/poll', h((req) => pollInbox(param(req, 'name'), Number(req.body?.max) || 50)))
+apiRouter.post('/pubsub/subscriptions/:name/read', h((req) => markInboxRead(param(req, 'name'), req.body?.id ? str(req.body.id) : undefined)))
+apiRouter.delete('/pubsub/subscriptions/:name/inbox', h((req) => clearInbox(param(req, 'name'))))
+
+// Grafana (ver logs de um datasource Loki da empresa/local)
+apiRouter.get('/grafana/config', h(() => getSettings().grafana))
+apiRouter.post('/grafana/test', h((req) => grafanaTest(mergeGrafana(getSettings().grafana, req.body?.cfg))))
+apiRouter.post('/grafana/logs', h((req) => {
+  const b = req.body ?? {}
+  return grafanaLogs(mergeGrafana(getSettings().grafana, b.cfg), { query: b.query, limit: b.limit, sinceMinutes: b.sinceMinutes })
+}))
+
 apiRouter.get('/fs/dirs', h((req) => listDirs(str(req.query.path) || undefined)))
 apiRouter.post('/shell/open-path', h((req) => openPath(str(req.body?.path))))
 apiRouter.post('/shell/open-terminal', h((req) => openTerminal(str(req.body?.path))))
@@ -373,7 +430,7 @@ apiRouter.post('/scan', h(async (req) => {
   const root = str(req.body?.root) || undefined
   const s = getSettings()
   const dir = root ?? s.rootFolder
-  if (!dir) throw new Error('Pasta raiz não definida')
+  if (!dir) throw new Error('Root folder not set')
   if (root && root !== s.rootFolder) saveSettings({ rootFolder: root })
   lastScan = await scanFolder(dir)
   return lastScan
@@ -443,7 +500,7 @@ async function startWithDeps(id: string, mode: StartMode): Promise<{ order: stri
     const r = await waitRunning(depId)
     if (r !== 'running') {
       failed.push(depId)
-      pm.log(id, 'system', `⚠ dependência ${depId} ${r === 'timeout' ? 'não ficou pronta a tempo' : 'falhou ao arrancar'} — a continuar`)
+      pm.log(id, 'system', `⚠ dependency ${depId} ${r === 'timeout' ? 'did not become ready in time' : 'failed to start'} — continuing`)
     }
   }
   if (!pm.isActive(id)) startService(id, mode)
@@ -453,6 +510,35 @@ async function startWithDeps(id: string, mode: StartMode): Promise<{ order: stri
 
 apiRouter.post('/services/:id/start', h((req) => startService(param(req, 'id'), req.body?.mode as StartMode)))
 apiRouter.get('/services/:id/dep-order', h((req) => ({ effective: effectiveDeps(param(req, 'id')), order: depOrder(param(req, 'id')) })))
+
+// Base de dados de um microserviço SR (criar a partir do que foi detetado)
+// Spec efetiva = valores detetados no scan + overrides guardados nas settings do serviço.
+function effectiveSrSpec(id: string): SrDbInfo {
+  const svc = findService(id)
+  if (!svc.srDatabase) throw new Error('This service has no detected SR database')
+  const o = getSettings().services[id]?.srDb
+  const database = o?.database?.trim() || svc.srDatabase.database
+  const schema = o?.schema?.trim() || svc.srDatabase.schema
+  const edited = database !== svc.srDatabase.database || schema !== svc.srDatabase.schema
+  return { ...svc.srDatabase, database, schema, source: edited ? `${svc.srDatabase.source} · edited` : svc.srDatabase.source }
+}
+apiRouter.get('/services/:id/srdb', h((req) => srDbStatus(effectiveSrSpec(param(req, 'id')))))
+apiRouter.post('/services/:id/srdb/create', h((req) => createSrDb(effectiveSrSpec(param(req, 'id')), !!req.body?.reset)))
+apiRouter.post('/services/:id/srdb/drop', h((req) => dropSrDb(effectiveSrSpec(param(req, 'id')))))
+apiRouter.get('/services/:id/srdb/table', h((req) => srTableData(effectiveSrSpec(param(req, 'id')), str(req.query.name), Number(str(req.query.limit)) || 100)))
+// Guarda (ou limpa) o override database/schema detetado
+apiRouter.put('/services/:id/srdb/spec', h((req) => {
+  const id = param(req, 'id')
+  findService(id) // valida que existe
+  const database = typeof req.body?.database === 'string' ? req.body.database.trim() : ''
+  const schema = typeof req.body?.schema === 'string' ? req.body.schema.trim() : ''
+  const s = getSettings()
+  const ss: ServiceSettings = { ...(s.services[id] ?? {}) }
+  if (database || schema) ss.srDb = { ...(database ? { database } : {}), ...(schema ? { schema } : {}) }
+  else delete ss.srDb
+  saveSettings({ services: { ...s.services, [id]: ss } })
+  return effectiveSrSpec(id)
+}))
 apiRouter.post('/services/:id/start-with-deps', h((req) => startWithDeps(param(req, 'id'), req.body?.mode as StartMode)))
 // ---- Postgres (bases de dados por serviço) ----
 setPasswordLookup((id) => lastScan?.services.find((s) => s.id === id)?.datasource?.password)
@@ -482,10 +568,24 @@ apiRouter.post('/services/:id/envs/compose', h(async (req) => {
   const body = (req.body ?? {}) as Partial<EnvMix> & { force?: boolean; setProfile?: boolean }
   const mix: EnvMix = { base: str(body.base), target: str(body.target), choices: body.choices ?? {}, values: body.values ?? {} }
   const result = await composeEnv(svc, mix, !!body.force)
+  // Com o toggle ligado, o profile do input fica declarado no application.yaml base e é usado no arranque.
+  if (body.setProfile) await setBaseActiveProfile(svc, mix.target)
   const s = getSettings()
   const ss = { ...(s.services[svc.id] ?? {}), envMix: mix, ...(body.setProfile ? { profile: mix.target } : {}) }
   saveSettings({ services: { ...s.services, [svc.id]: ss } })
   void rescanQuiet() // o perfil novo passa a aparecer na lista de perfis do serviço
+  return result
+}))
+// Toggle "use at startup": liga → escreve spring.profiles.active no application.yaml base + guarda o profile; desliga → remove.
+apiRouter.post('/services/:id/envs/profile', h(async (req) => {
+  const svc = findService(param(req, 'id'))
+  const profile = typeof req.body?.profile === 'string' && req.body.profile.trim() ? req.body.profile.trim() : undefined
+  const result = await setBaseActiveProfile(svc, profile)
+  const s = getSettings()
+  const ss = { ...(s.services[svc.id] ?? {}) }
+  if (profile) ss.profile = profile
+  else delete ss.profile
+  saveSettings({ services: { ...s.services, [svc.id]: ss } })
   return result
 }))
 
@@ -503,7 +603,7 @@ apiRouter.get('/services/:id/bruno', h((req) => listCollections(findService(para
 apiRouter.get('/services/:id/openapi', h(async (req) => {
   const svc = findService(param(req, 'id'))
   const rel = str(req.query.path)
-  if (!(svc.openApiFiles ?? []).includes(rel)) throw new Error('Ficheiro OpenAPI não reconhecido para este serviço')
+  if (!(svc.openApiFiles ?? []).includes(rel)) throw new Error('OpenAPI file not recognized for this service')
   const full = join(svc.path, rel)
   const text = await fs.readFile(full, 'utf8')
   // devolve sempre JSON, mesmo que o contrato esteja em YAML
@@ -530,7 +630,7 @@ apiRouter.post('/kc/admin', h((req) => {
     case 'resetPassword': return a.resetPassword(p0, p1, p2)
     case 'deleteUser': return a.deleteUser(p0, p1)
     case 'providers': return a.providers()
-    default: throw new Error(`Operação desconhecida: ${op}`)
+    default: throw new Error(`Unknown operation: ${op}`)
   }
 }))
 
@@ -573,17 +673,18 @@ apiRouter.post('/services/:id/git/push', h((req) => gitOps.push(findService(para
 const CONTAINER_ACTIONS = new Set<ContainerAction>(['start', 'stop', 'restart', 'remove', 'pause', 'unpause'])
 
 apiRouter.get('/containers/engine', h(() => engineInfo(containerCmd())))
+apiRouter.post('/containers/exec', h((req) => execContainerCommand(containerCmd(), Array.isArray(req.body?.args) ? req.body.args : [])))
 apiRouter.get('/containers', h(() => listContainers(containerCmd())))
 apiRouter.get('/containers/images', h(() => listImages(containerCmd())))
 apiRouter.delete('/containers/images/:id', h((req) => removeImage(containerCmd(), param(req, 'id'), req.query.force === '1')))
 apiRouter.post('/containers/machine/:name/:action', h((req) => {
   const action = param(req, 'action')
-  if (action !== 'start' && action !== 'stop') throw new Error('Ação inválida')
+  if (action !== 'start' && action !== 'stop') throw new Error('Invalid action')
   return machineAction(containerCmd(), action, param(req, 'name') === '_default' ? '' : param(req, 'name'))
 }))
 apiRouter.post('/containers/:id/logs', h((req) => {
   const id = param(req, 'id')
-  if (!/^[\w.-]+$/.test(id)) throw new Error('Identificador inválido')
+  if (!/^[\w.-]+$/.test(id)) throw new Error('Invalid identifier')
   const procId = `container:${id}`
   if (pm.isActive(procId)) return pm.getState(procId)
   pm.clearLogs(procId)
@@ -591,7 +692,7 @@ apiRouter.post('/containers/:id/logs', h((req) => {
 }))
 apiRouter.post('/containers/:id/:action', h((req) => {
   const action = param(req, 'action') as ContainerAction
-  if (!CONTAINER_ACTIONS.has(action)) throw new Error(`Ação inválida: ${action}`)
+  if (!CONTAINER_ACTIONS.has(action)) throw new Error(`Invalid action: ${action}`)
   return containerAction(containerCmd(), action, param(req, 'id'), !!req.body?.force)
 }))
 
@@ -628,7 +729,7 @@ apiRouter.post('/redis/container/start', h(async () => {
 /** Cliente REST da UI: o browser não pode chamar os serviços diretamente (CORS), por isso o servidor faz o pedido. */
 apiRouter.post('/http', h(async (req): Promise<HttpResponse> => {
   const { method = 'GET', url, headers = {}, body } = (req.body ?? {}) as HttpRequest
-  if (!/^https?:\/\//i.test(url ?? '')) throw new Error('URL inválido: tem de começar por http:// ou https://')
+  if (!/^https?:\/\//i.test(url ?? '')) throw new Error('Invalid URL: must start with http:// or https://')
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 60_000)
   const started = Date.now()

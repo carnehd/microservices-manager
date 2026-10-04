@@ -40,29 +40,29 @@ export function FolderPicker({ initial, onClose }: { initial?: string; onClose: 
   return (
     <div className="modal-backdrop" onClick={() => onClose(null)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Escolher pasta</h3>
+        <h3>Choose folder</h3>
         <div className="row">
           <input
             className="input mono grow"
             value={input}
             autoFocus
-            placeholder="C:\projetos\microservicos"
+            placeholder="C:\projects\microservices"
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && go(input.trim() || undefined)}
           />
-          <button className="btn" onClick={() => go(input.trim() || undefined)}>Ir</button>
+          <button className="btn" onClick={() => go(input.trim() || undefined)}>Go</button>
         </div>
         {error && <div className="text-error small">{error}</div>}
         <div className="dir-list">
           {listing?.parent !== undefined && <button className="dir-item" onClick={() => go(listing.parent || undefined)}>⬆ ..</button>}
           {listing && !listing.path && listing.drives.map((d) => <button className="dir-item" key={d} onClick={() => go(d)}>💽 {d}</button>)}
           {listing?.dirs.map((d) => <button className="dir-item" key={d} onClick={() => go(joinPath(listing.path, d))}>📁 {d}</button>)}
-          {listing && listing.path && !listing.dirs.length && <div className="muted small pad">Sem subpastas.</div>}
+          {listing && listing.path && !listing.dirs.length && <div className="muted small pad">No subfolders.</div>}
         </div>
         <div className="row">
           <span className="muted small mono ellipsis grow">{listing?.path}</span>
-          <button className="btn" onClick={() => onClose(null)}>Cancelar</button>
-          <button className="btn btn-primary" disabled={!listing?.path} onClick={() => onClose(listing!.path)}>Escolher esta pasta</button>
+          <button className="btn" onClick={() => onClose(null)}>Cancel</button>
+          <button className="btn btn-primary" disabled={!listing?.path} onClick={() => onClose(listing!.path)}>Choose this folder</button>
         </div>
       </div>
     </div>

@@ -64,79 +64,79 @@ export async function runDiagnostics(ctx: { settings: AppSettings; scan: ScanRes
 
   // ---- App / sistema ----
   const nodeMajor = Number(process.versions.node.split('.')[0])
-  add('App', 'Sistema', 'info', `${platform()} ${release()} (${arch()}) · ${Math.round(totalmem() / 1024 ** 3)} GB RAM`)
-  add('App', 'Node.js', nodeMajor >= 20 ? 'ok' : 'fail', `v${process.versions.node}`, nodeMajor >= 20 ? undefined : 'A app precisa de Node 20 ou superior (https://nodejs.org)')
-  add('App', 'Servidor', 'info', `http://localhost:${ctx.port} · definições em ${join(dataDir(), 'settings.json')}`)
+  add('App', 'System', 'info', `${platform()} ${release()} (${arch()}) · ${Math.round(totalmem() / 1024 ** 3)} GB RAM`)
+  add('App', 'Node.js', nodeMajor >= 20 ? 'ok' : 'fail', `v${process.versions.node}`, nodeMajor >= 20 ? undefined : 'The app needs Node 20 or higher (https://nodejs.org)')
+  add('App', 'Server', 'info', `http://localhost:${ctx.port} · settings at ${join(dataDir(), 'settings.json')}`)
 
   // ---- Java ----
   const javaHome = settings.javaHome || process.env.JAVA_HOME
   const javaCmd = settings.javaHome ? `"${join(settings.javaHome, 'bin', 'java')}"` : 'java'
   const java = await tryRun(javaCmd, ['-version'])
-  if (!java) add('Java', 'java', 'fail', settings.javaHome ? `não encontrado em ${settings.javaHome}\\bin` : 'não encontrado no PATH', 'Instala um JDK 21 (ex.: Adoptium Temurin) ou define JAVA_HOME em Definições → Java / Maven')
+  if (!java) add('Java', 'java', 'fail', settings.javaHome ? `not found in ${settings.javaHome}\\bin` : 'not found in PATH', 'Install a JDK 21 (e.g. Adoptium Temurin) or set JAVA_HOME in Settings → Java / Maven')
   else {
     const major = javaMajor(java.out)
     const line = java.out.split('\n').find((l) => /version/i.test(l)) ?? java.out.split('\n')[0]
     add('Java', 'java', major === undefined ? 'warn' : major >= 21 ? 'ok' : major >= 17 ? 'warn' : 'fail', line,
-      major !== undefined && major < 21 ? 'Spring Boot 3 precisa de Java 17+; o Keycloak 26 precisa de Java 21' : undefined)
+      major !== undefined && major < 21 ? 'Spring Boot 3 needs Java 17+; Keycloak 26 needs Java 21' : undefined)
   }
-  add('Java', 'JAVA_HOME', javaHome ? (existsSync(javaHome) ? 'ok' : 'fail') : 'info', javaHome ?? 'não definido (usa o java do PATH)', javaHome && !existsSync(javaHome) ? 'A pasta não existe' : undefined)
+  add('Java', 'JAVA_HOME', javaHome ? (existsSync(javaHome) ? 'ok' : 'fail') : 'info', javaHome ?? 'not set (uses java from PATH)', javaHome && !existsSync(javaHome) ? 'The folder does not exist' : undefined)
 
   // ---- Maven / Git ----
   const mvn = await tryRun(settings.mavenCommand || 'mvn', ['-v'])
   const withWrapper = scan?.services.filter((s) => s.wrapperDir).length ?? 0
   const total = scan?.services.length ?? 0
   if (mvn) add('Build', `Maven (${settings.mavenCommand || 'mvn'})`, 'ok', mvn.out.split('\n').find((l) => /Apache Maven/.test(l)) ?? mvn.out.split('\n')[0])
-  else add('Build', `Maven (${settings.mavenCommand || 'mvn'})`, total && withWrapper === total ? 'info' : 'warn', 'não encontrado no PATH',
-    total && withWrapper === total ? 'Não faz falta: todos os serviços têm mvnw' : 'Instala o Maven ou usa projetos com mvnw.cmd (Definições → preferir wrapper)')
-  if (total) add('Build', 'Maven wrapper', withWrapper === total ? 'ok' : withWrapper ? 'warn' : 'info', `${withWrapper} de ${total} serviços têm mvnw`, withWrapper < total && !mvn ? 'Os serviços sem wrapper não vão conseguir arrancar' : undefined)
+  else add('Build', `Maven (${settings.mavenCommand || 'mvn'})`, total && withWrapper === total ? 'info' : 'warn', 'not found in PATH',
+    total && withWrapper === total ? 'Not needed: all services have mvnw' : 'Install Maven or use projects with mvnw.cmd (Settings → prefer wrapper)')
+  if (total) add('Build', 'Maven wrapper', withWrapper === total ? 'ok' : withWrapper ? 'warn' : 'info', `${withWrapper} of ${total} services have mvnw`, withWrapper < total && !mvn ? 'Services without a wrapper will not be able to start' : undefined)
   const repo = settings.mavenRepoLocal?.trim()
-  if (repo) add('Build', 'Repositório Maven local', existsSync(repo) ? 'ok' : 'warn', repo, existsSync(repo) ? undefined : 'A pasta não existe — o Maven cria-a no primeiro build (confirma o caminho)')
+  if (repo) add('Build', 'Local Maven repository', existsSync(repo) ? 'ok' : 'warn', repo, existsSync(repo) ? undefined : 'The folder does not exist — Maven creates it on the first build (check the path)')
   const mvnSettings = settings.mavenSettingsFile?.trim()
-  if (mvnSettings) add('Build', 'settings.xml', existsSync(mvnSettings) ? 'ok' : 'fail', mvnSettings, existsSync(mvnSettings) ? undefined : 'Ficheiro não encontrado')
+  if (mvnSettings) add('Build', 'settings.xml', existsSync(mvnSettings) ? 'ok' : 'fail', mvnSettings, existsSync(mvnSettings) ? undefined : 'File not found')
   const git = await tryRun('git', ['--version'])
-  add('Build', 'Git', git ? 'ok' : 'warn', git ? git.out.split('\n')[0] : 'não encontrado no PATH', git ? undefined : 'O separador Git precisa do Git (https://git-scm.com)')
+  add('Build', 'Git', git ? 'ok' : 'warn', git ? git.out.split('\n')[0] : 'not found in PATH', git ? undefined : 'The Git tab requires Git (https://git-scm.com)')
 
   // ---- Pasta raiz / serviços ----
-  if (!settings.rootFolder) add('Serviços', 'Pasta raiz', 'fail', 'não definida', 'Definições → Pasta raiz dos microserviços')
-  else if (!existsSync(settings.rootFolder)) add('Serviços', 'Pasta raiz', 'fail', `${settings.rootFolder} não existe`)
+  if (!settings.rootFolder) add('Services', 'Root folder', 'fail', 'not set', 'Settings → Microservices root folder')
+  else if (!existsSync(settings.rootFolder)) add('Services', 'Root folder', 'fail', `${settings.rootFolder} does not exist`)
   else {
-    add('Serviços', 'Pasta raiz', 'ok', settings.rootFolder)
-    if (!scan) add('Serviços', 'Scan', 'warn', 'ainda não foi feito', 'Carrega em Rescan')
+    add('Services', 'Root folder', 'ok', settings.rootFolder)
+    if (!scan) add('Services', 'Scan', 'warn', 'not done yet', 'Click Rescan')
     else {
       const boots = scan.services.filter((s) => s.kind === 'spring-boot')
       const spis = scan.services.filter((s) => s.kind === 'keycloak-spi')
-      add('Serviços', 'Detetados', scan.services.length ? 'ok' : 'warn',
-        `${boots.length} Spring Boot · ${spis.length} Keycloak SPI · ${scan.services.length - boots.length - spis.length} outros Maven`,
-        scan.services.length ? undefined : 'Nenhum pom.xml encontrado até 6 níveis (target/, node_modules/, src/ são ignorados)')
+      add('Services', 'Detected', scan.services.length ? 'ok' : 'warn',
+        `${boots.length} Spring Boot · ${spis.length} Keycloak SPI · ${scan.services.length - boots.length - spis.length} other Maven`,
+        scan.services.length ? undefined : 'No pom.xml found up to 6 levels deep (target/, node_modules/, src/ are ignored)')
       const semPorta = boots.filter((s) => !s.configFiles.length)
-      if (semPorta.length) add('Serviços', 'Sem application.yml', 'info', semPorta.map((s) => s.name).join(', '), 'Porta assumida 8080; o Swagger/Endpoints podem falhar')
+      if (semPorta.length) add('Services', 'No application.yml', 'info', semPorta.map((s) => s.name).join(', '), 'Port assumed to be 8080; Swagger/Endpoints may fail')
       for (const s of boots) {
         const port = running.get(s.id)?.detectedPort ?? settings.services[s.id]?.port ?? s.port
         if (!port) continue
         const used = await portInUse(port)
         const byApp = running.has(s.id)
-        add('Portas', `${s.name} :${port}`, byApp ? 'ok' : used ? 'warn' : 'ok', byApp ? 'a correr (arrancado pela app)' : used ? 'ocupada por outro processo' : 'livre',
-          !byApp && used ? 'Se arrancares este serviço vai falhar com "Address already in use" — para o outro processo ou muda server.port' : undefined)
+        add('Ports', `${s.name} :${port}`, byApp ? 'ok' : used ? 'warn' : 'ok', byApp ? 'running (started by the app)' : used ? 'in use by another process' : 'free',
+          !byApp && used ? 'If you start this service it will fail with "Address already in use" — stop the other process or change server.port' : undefined)
       }
     }
   }
 
   // ---- Keycloak (container) ----
-  add('Keycloak', 'Container', 'info', `${settings.keycloak.containerName} · ${settings.keycloak.image}`, 'Gerido na página Keycloak (precisa do motor de containers)')
+  add('Keycloak', 'Container', 'info', `${settings.keycloak.containerName} · ${settings.keycloak.image}`, 'Managed on the Keycloak page (requires the container engine)')
   const kcUsed = await portInUse(settings.keycloak.httpPort)
-  add('Keycloak', `Porta :${settings.keycloak.httpPort}`, running.has('keycloak') ? 'ok' : kcUsed ? 'warn' : 'info', running.has('keycloak') ? 'Keycloak a correr (container gerido pela app)' : kcUsed ? 'ocupada por outro processo (outro Keycloak?)' : 'livre — Keycloak parado')
+  add('Keycloak', `Port :${settings.keycloak.httpPort}`, running.has('keycloak') ? 'ok' : kcUsed ? 'warn' : 'info', running.has('keycloak') ? 'Keycloak running (container managed by the app)' : kcUsed ? 'in use by another process (another Keycloak?)' : 'free — Keycloak stopped')
 
   // ---- Containers / Redis ----
   const engine = await engineInfo(settings.containerCommand?.trim() || 'podman')
-  if (!engine.available) add('Containers', engine.command, 'warn', engine.error ?? 'não encontrado', 'Instala o Podman (ou Docker e muda o comando em Definições); só afeta as páginas Containers e Redis')
+  if (!engine.available) add('Containers', engine.command, 'warn', engine.error ?? 'not found', 'Install Podman (or Docker and change the command in Settings); only affects the Containers and Redis pages')
   else {
     const m = engine.machines?.find((x) => x.isDefault) ?? engine.machines?.[0]
-    add('Containers', engine.command, engine.error ? 'warn' : 'ok', `cliente ${engine.clientVersion ?? '?'}${engine.serverVersion ? ` · servidor ${engine.serverVersion}` : ''}${m ? ` · máquina ${m.name} ${m.running ? 'a correr' : 'parada'}` : ''}`,
-      engine.error ? (m && !m.running ? 'A máquina está parada: Containers → Arrancar máquina' : engine.error) : undefined)
+    add('Containers', engine.command, engine.error ? 'warn' : 'ok', `client ${engine.clientVersion ?? '?'}${engine.serverVersion ? ` · server ${engine.serverVersion}` : ''}${m ? ` · machine ${m.name} ${m.running ? 'running' : 'stopped'}` : ''}`,
+      engine.error ? (m && !m.running ? 'The machine is stopped: Containers → Start machine' : engine.error) : undefined)
   }
   const redis = await redisOps.info(settings.redis)
-  add('Redis', `${settings.redis.host}:${settings.redis.port}`, redis.connected ? 'ok' : 'info', redis.connected ? `v${redis.version} · ${redis.keys} chaves · ${redis.usedMemory}` : redis.error ?? 'sem ligação',
-    redis.connected ? undefined : 'Só é preciso se usares a página Redis: arranca lá o container ou ajusta Definições → Redis')
+  add('Redis', `${settings.redis.host}:${settings.redis.port}`, redis.connected ? 'ok' : 'info', redis.connected ? `v${redis.version} · ${redis.keys} keys · ${redis.usedMemory}` : redis.error ?? 'no connection',
+    redis.connected ? undefined : 'Only needed if you use the Redis page: start the container there or adjust Settings → Redis')
 
   return { generatedAt: Date.now(), platform: `${platform()} ${arch()}`, items }
 }

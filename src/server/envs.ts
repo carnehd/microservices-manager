@@ -9,12 +9,17 @@ const relPosix = (from: string, to: string): string => relative(from, to).split(
 type Format = 'yaml' | 'properties'
 
 interface EnvFile {
+  /** id único por ficheiro (usado como chave e valor do dropdown) */
+  id: string
+  /** etiqueta amigável mostrada no dropdown */
+  label: string
+  /** nome do ambiente (sufixo de application-<ambiente> ou nome do ficheiro k8s) */
   profile: string
   file: string
   format: Format
   text: string
   generated: boolean
-  /** valores (também) vindos da pasta k8s */
+  /** ficheiro vindo da pasta k8s */
   k8s?: boolean
   values: Map<string, { path: string[]; value: unknown }>
 }
@@ -63,13 +68,17 @@ function yamlKeys(text: string): Map<string, { path: string[]; value: unknown }>
   return out
 }
 
-/** Deteta o ambiente a partir do nome do ficheiro ou da pasta pai. */
-function k8sEnvName(file: string, parent: string): string | undefined {
+/**
+ * Deteta o ambiente a partir do nome do ficheiro (forte) ou da pasta pai (fraco).
+ * `fromFile` = o nome do ambiente vem do próprio ficheiro (application-<env> ou <env>.yaml),
+ * e nesse caso o ficheiro aparece sempre no dropdown, mesmo sem valores de config a comparar.
+ */
+function k8sEnvName(file: string, parent: string): { name: string; fromFile: boolean } | undefined {
   const base = file.replace(/\.(ya?ml|properties)$/i, '')
   const m = /^application-([\w.-]+)$/i.exec(base)
-  if (m) return m[1]
-  if (!K8S_GENERIC_FILE.has(base.toLowerCase())) return base
-  if (parent && !K8S_SKIP_FOLDER.has(parent.toLowerCase())) return parent
+  if (m) return { name: m[1], fromFile: true }
+  if (!K8S_GENERIC_FILE.has(base.toLowerCase())) return { name: base, fromFile: true }
+  if (parent && !K8S_SKIP_FOLDER.has(parent.toLowerCase())) return { name: parent, fromFile: false }
   return undefined
 }
 
@@ -127,8 +136,8 @@ async function readK8sEnvFiles(rootPath: string): Promise<EnvFile[]> {
         continue
       }
       if (!/\.(ya?ml|properties)$/i.test(e.name)) continue
-      const profile = k8sEnvName(e.name, basename(dir))
-      if (!profile) continue
+      const env = k8sEnvName(e.name, basename(dir))
+      if (!env) continue
       const format: Format = e.name.endsWith('.properties') ? 'properties' : 'yaml'
       let text: string
       try {
@@ -137,8 +146,10 @@ async function readK8sEnvFiles(rootPath: string): Promise<EnvFile[]> {
         continue
       }
       const values = extractK8sValues(text, format)
-      if (!values.size) continue
-      out.push({ profile, file: relPosix(rootPath, join(dir, e.name)), format, text, generated: false, k8s: true, values })
+      // Ficheiros cujo nome é o ambiente aparecem sempre; os genéricos (ambiente vindo da pasta) só com config.
+      if (!values.size && !env.fromFile) continue
+      const rel = relPosix(rootPath, join(dir, e.name))
+      out.push({ id: rel, label: `${env.name} · ${rel}`, profile: env.name, file: rel, format, text, generated: false, k8s: true, values })
     }
   }
   for (const r of roots) await walk(r, 0)
@@ -169,24 +180,44 @@ async function readEnvFiles(svc: ServiceInfo): Promise<EnvFile[]> {
         /* yaml inválido: sem chaves */
       }
     } else values = parseProperties(text)
-    files.push({ profile: m[1], file: name, format, text, generated: text.startsWith(MARKER), values })
+    files.push({ id: m[1], label: m[1], profile: m[1], file: name, format, text, generated: text.startsWith(MARKER), values })
   }
-  // Funde os ficheiros da pasta k8s: mesmo ambiente → sem coluna duplicada (resources tem prioridade; k8s só acrescenta chaves em falta)
-  for (const e of await readK8sEnvFiles(svc.path)) {
-    const existing = files.find((f) => f.profile === e.profile)
-    if (existing) {
-      existing.k8s = true
-      for (const [k, val] of e.values) if (!existing.values.has(k)) existing.values.set(k, val)
-    } else {
-      files.push(e)
-    }
-  }
+  // Cada ficheiro de k8s é uma entrada própria no dropdown (sem fusão com os de resources).
+  for (const e of await readK8sEnvFiles(svc.path)) files.push(e)
   files.sort((a, b) => {
     const ia = ORDER.indexOf(a.profile), ib = ORDER.indexOf(b.profile)
     if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
-    return a.profile.localeCompare(b.profile)
+    if (a.profile !== b.profile) return a.profile.localeCompare(b.profile)
+    // mesmo ambiente: resources antes de k8s, depois por caminho
+    if (!!a.k8s !== !!b.k8s) return a.k8s ? 1 : -1
+    return a.id.localeCompare(b.id)
   })
   return files
+}
+
+/** Lê o application.(yaml|yml|properties) base (sem -<perfil>) da resourcesDir e achata-o em chave→valor (texto). */
+async function readDefaultValues(svc: ServiceInfo): Promise<Record<string, string>> {
+  const dir = resourcesDir(svc)
+  let names: string[] = []
+  try {
+    names = await fs.readdir(dir)
+  } catch {
+    return {}
+  }
+  // Ficheiro base = application sem sufixo de perfil (preferir yaml/yml sobre properties)
+  const name =
+    names.find((n) => /^application\.ya?ml$/i.test(n)) ?? names.find((n) => /^application\.properties$/i.test(n))
+  if (!name) return {}
+  let text: string
+  try {
+    text = await fs.readFile(join(dir, name), 'utf8')
+  } catch {
+    return {}
+  }
+  const values = name.toLowerCase().endsWith('.properties') ? parseProperties(text) : yamlKeys(text)
+  const out: Record<string, string> = {}
+  for (const [k, entry] of values) out[k] = display(entry.value)
+  return out
 }
 
 export async function listEnvs(svc: ServiceInfo): Promise<EnvsInfo> {
@@ -199,17 +230,62 @@ export async function listEnvs(svc: ServiceInfo): Promise<EnvsInfo> {
         k = { key, path: entry.path, values: {} }
         keys.set(key, k)
       }
-      k.values[f.profile] = display(entry.value)
+      k.values[f.id] = display(entry.value)
     }
   }
   return {
     resourcesDir: resourcesDir(svc),
-    profiles: files.map((f) => f.profile),
-    files: Object.fromEntries(files.map((f) => [f.profile, f.file])),
-    generated: files.filter((f) => f.generated).map((f) => f.profile),
-    k8s: files.filter((f) => f.k8s).map((f) => f.profile),
-    keys: [...keys.values()]
+    profiles: files.map((f) => f.id),
+    files: Object.fromEntries(files.map((f) => [f.id, f.file])),
+    labels: Object.fromEntries(files.map((f) => [f.id, f.label])),
+    generated: files.filter((f) => f.generated).map((f) => f.id),
+    k8s: files.filter((f) => f.k8s).map((f) => f.id),
+    keys: [...keys.values()],
+    defaultValues: await readDefaultValues(svc)
   }
+}
+
+/**
+ * Escreve (ou remove) `spring.profiles.active: <profile>` no application.(yaml|yml|properties) base.
+ * É assim que o profile definido no input fica declarado no ficheiro e é usado no arranque.
+ * profile vazio/undefined → remove a propriedade.
+ */
+export async function setBaseActiveProfile(svc: ServiceInfo, profile?: string): Promise<{ file: string }> {
+  const prof = profile?.trim()
+  if (prof && !/^[\w.-]+$/.test(prof)) throw new Error(`Invalid profile name: ${prof}`)
+  const dir = resourcesDir(svc)
+  let names: string[] = []
+  try {
+    names = await fs.readdir(dir)
+  } catch {
+    throw new Error(`Resources folder not found: ${dir}`)
+  }
+  const name = names.find((n) => /^application\.ya?ml$/i.test(n)) ?? names.find((n) => /^application\.properties$/i.test(n))
+  if (!name) throw new Error('No base application.(yaml|yml|properties) to set the profile in')
+  const full = join(dir, name)
+  let text = await fs.readFile(full, 'utf8')
+  if (name.toLowerCase().endsWith('.properties')) {
+    const lines = text.split(/\r?\n/)
+    const i = lines.findIndex((l) => /^\s*spring\.profiles\.active\s*[=:]/.test(l))
+    if (prof) {
+      const line = `spring.profiles.active=${prof}`
+      if (i >= 0) lines[i] = line
+      else lines.push(line)
+    } else if (i >= 0) lines.splice(i, 1)
+    text = lines.join('\n')
+  } else {
+    const doc = parseDocument(text)
+    if (prof) {
+      doc.setIn(['spring', 'profiles', 'active'], prof)
+    } else {
+      doc.deleteIn(['spring', 'profiles', 'active'])
+      const profiles = doc.getIn(['spring', 'profiles']) as { items?: unknown[] } | undefined
+      if (profiles && Array.isArray(profiles.items) && profiles.items.length === 0) doc.deleteIn(['spring', 'profiles'])
+    }
+    text = doc.toString()
+  }
+  await fs.writeFile(full, text)
+  return { file: full }
 }
 
 /** Converte "8080"/"true" nos tipos certos para o YAML; o resto fica string. */
@@ -220,17 +296,17 @@ function coerce(v: string): unknown {
 }
 
 export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean): Promise<EnvComposeResult> {
-  if (!/^[\w.-]+$/.test(mix.target)) throw new Error(`Nome de perfil inválido: ${mix.target}`)
+  if (!/^[\w.-]+$/.test(mix.target)) throw new Error(`Invalid profile name: ${mix.target}`)
   const files = await readEnvFiles(svc)
-  const base = files.find((f) => f.profile === mix.base)
-  if (!base) throw new Error(`Ficheiro do perfil "${mix.base}" não existe`)
-  if (mix.target === mix.base) throw new Error('O perfil gerado tem de ser diferente do perfil de partida')
+  const base = files.find((f) => f.id === mix.base)
+  if (!base) throw new Error(`Profile file "${mix.base}" does not exist`)
+  if (mix.target === mix.base || mix.target === base.profile) throw new Error('The generated profile must be different from the source profile')
   const ext = base.file.slice(base.file.lastIndexOf('.'))
   const targetName = `application-${mix.target}${ext}`
   const targetPath = join(resourcesDir(svc), targetName)
   if (existsSync(targetPath) && !force) {
     const existing = await fs.readFile(targetPath, 'utf8')
-    if (!existing.startsWith(MARKER)) throw new Error(`${targetName} já existe e não foi gerado pela app — confirma para o substituir`)
+    if (!existing.startsWith(MARKER)) throw new Error(`${targetName} already exists and was not generated by the app — confirm to replace it`)
   }
 
   const warnings: string[] = []
@@ -246,14 +322,14 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
   for (const [key, env] of Object.entries(mix.choices)) {
     if (env === mix.base) continue
     if (mix.values && key in mix.values) continue // valor personalizado tem prioridade
-    const src = files.find((f) => f.profile === env)
+    const src = files.find((f) => f.id === env)
     if (!src) {
-      warnings.push(`${key}: ambiente "${env}" não existe — mantido o valor de ${mix.base}`)
+      warnings.push(`${key}: environment "${env}" does not exist — kept the value from ${mix.base}`)
       continue
     }
     const entry = src.values.get(key)
     if (!entry) {
-      warnings.push(`${key}: não existe em ${src.file} — mantido o valor de ${mix.base}`)
+      warnings.push(`${key}: does not exist in ${src.file} — kept the value from ${mix.base}`)
       continue
     }
     overrides.push({ key, path: entry.path, value: entry.value })
@@ -267,8 +343,8 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
 
   const header = [
     MARKER,
-    `# Perfil de partida: ${base.file}${applied.length ? ' · valores copiados: ' + applied.join(', ') : ''}`,
-    '# Não editar à mão — volta a gerar no separador Ambientes da app.'
+    `# Source profile: ${base.file}${applied.length ? ' · copied values: ' + applied.join(', ') : ''}`,
+    '# Do not edit by hand — regenerate in the Environments tab of the app.'
   ]
   let content: string
   if (base.format === 'yaml') {

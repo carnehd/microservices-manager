@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BrunoCollection, BrunoRequest, HttpResponse, ServiceInfo } from '../../../shared/types'
 import { api } from '../api'
-import { setToken, useAuthToken } from '../auth'
-import { Badge } from './common'
+import { decodeJwt, setToken, useAuthToken } from '../auth'
 
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
+type KV = { key: string; value: string }
+type Auth = { type: string; token: string; username: string; password: string }
+type ReqTab = 'params' | 'body' | 'headers' | 'auth'
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 const METHOD_TONE: Record<string, string> = { GET: 'get', POST: 'post', PUT: 'put', PATCH: 'patch', DELETE: 'delete' }
 
 function subst(text: string, vars: Record<string, string>): string {
@@ -13,6 +16,24 @@ function subst(text: string, vars: Record<string, string>): string {
 function missingVars(text: string, vars: Record<string, string>): string[] {
   return [...new Set([...text.matchAll(/\{\{\s*([\w.-]+)\s*\}\}/g)].map((m) => m[1]))].filter((k) => !(k in vars))
 }
+function toRows(obj: Record<string, string>): KV[] {
+  return Object.entries(obj).map(([key, value]) => ({ key, value }))
+}
+/** Se a resposta for um pull do Pub/Sub, descodifica o data (base64) de cada mensagem. */
+function decodePubsubPull(body: string): Array<{ data: string; attributes?: Record<string, string>; messageId?: string }> | null {
+  try {
+    const d = JSON.parse(body) as { receivedMessages?: Array<{ message?: { data?: string; attributes?: Record<string, string>; messageId?: string } }> }
+    if (!Array.isArray(d?.receivedMessages)) return null
+    return d.receivedMessages.map((m) => ({
+      data: m.message?.data ? decodeURIComponent(escape(atob(m.message.data))) : '',
+      attributes: m.message?.attributes,
+      messageId: m.message?.messageId
+    }))
+  } catch {
+    return null
+  }
+}
+
 function pretty(body: string, ct?: string): string {
   if (body && (ct?.includes('json') || /^\s*[[{]/.test(body))) {
     try {
@@ -24,16 +45,110 @@ function pretty(body: string, ct?: string): string {
   return body
 }
 
-export function BrunoView({ svc, notify, fail }: { svc: ServiceInfo; notify: Notify; fail: (e: unknown) => void }) {
+/** Editor de pares chave/valor (para Params e Headers): adicionar, editar e remover. */
+function KvRows({ rows, onChange, label }: { rows: KV[]; onChange: (r: KV[]) => void; label: string }) {
+  const set = (i: number, patch: Partial<KV>): void => onChange(rows.map((h, idx) => (idx === i ? { ...h, ...patch } : h)))
+  const add = (): void => onChange([...rows, { key: '', value: '' }])
+  const remove = (i: number): void => onChange(rows.filter((_, idx) => idx !== i))
+  return (
+    <section>
+      <div className="row">
+        <span className="muted small">{rows.length} {label.toLowerCase()}{rows.length === 1 ? '' : 's'}</span>
+        <span className="grow" />
+        <button className="btn btn-sm" onClick={add}>+ {label}</button>
+      </div>
+      {rows.length === 0 && <div className="muted small">No {label.toLowerCase()}s — add one with “+ {label}”.</div>}
+      {rows.map((h, i) => (
+        <div className="row bruno-header" key={i}>
+          <input className="input mono bruno-hkey" placeholder="Name" value={h.key} onChange={(e) => set(i, { key: e.target.value })} spellCheck={false} />
+          <input className="input mono grow" placeholder="Value" value={h.value} onChange={(e) => set(i, { value: e.target.value })} spellCheck={false} />
+          <button className="btn btn-sm" onClick={() => remove(i)} title="remove">✕</button>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+function loadTokenForm(): { realm?: string; clientId?: string; username?: string } {
+  try {
+    return JSON.parse(localStorage.getItem('msm.tokenForm') ?? '{}')
+  } catch {
+    return {}
+  }
+}
+
+/** Password grant contra o Keycloak local; o token fica partilhado por todos os serviços. */
+function KeycloakTokenForm({ kcPort, notify }: { kcPort: number; notify: Notify }) {
+  const saved = loadTokenForm()
+  const [realm, setRealm] = useState(saved.realm ?? 'master')
+  const [clientId, setClientId] = useState(saved.clientId ?? 'admin-cli')
+  const [username, setUsername] = useState(saved.username ?? '')
+  const [password, setPassword] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const get = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const form = new URLSearchParams({ grant_type: 'password', client_id: clientId, username, password })
+      if (clientSecret) form.set('client_secret', clientSecret)
+      const r = await api.http({
+        method: 'POST',
+        url: `http://localhost:${kcPort}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/token`,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form.toString()
+      })
+      if (r.error) throw new Error(`Keycloak not responding at localhost:${kcPort}: ${r.error}`)
+      let j: { access_token?: string; expires_in?: number; error?: string; error_description?: string } = {}
+      try {
+        j = JSON.parse(r.body)
+      } catch {
+        /* resposta não JSON */
+      }
+      if (r.status !== 200 || !j.access_token) throw new Error(j.error_description ?? j.error ?? `HTTP ${r.status}`)
+      setToken(j.access_token)
+      try {
+        localStorage.setItem('msm.tokenForm', JSON.stringify({ realm, clientId, username }))
+      } catch {
+        /* ignore */
+      }
+      notify(`Token obtained for ${username} (expires in ${j.expires_in ?? '?'} s)`, 'success')
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="form form-row">
+      <label>Realm<input className="input" value={realm} onChange={(e) => setRealm(e.target.value)} /></label>
+      <label>Client ID<input className="input" value={clientId} onChange={(e) => setClientId(e.target.value)} /></label>
+      <label>Username<input className="input" value={username} onChange={(e) => setUsername(e.target.value)} /></label>
+      <label>Password<input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && get()} /></label>
+      <label>Client secret (optional)<input className="input" type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} /></label>
+      <button className="btn btn-primary" disabled={busy || !username} onClick={get}>{busy ? 'Obtaining…' : 'Get token'}</button>
+      <span className="muted small">Direct access grants must be enabled on the client.</span>
+    </div>
+  )
+}
+
+export function BrunoView({ svc, kcPort, notify, fail }: { svc: ServiceInfo; kcPort: number; notify: Notify; fail: (e: unknown) => void }) {
   const [cols, setCols] = useState<BrunoCollection[] | null>(null)
   const [colDir, setColDir] = useState('')
   const [env, setEnv] = useState('')
   const [sel, setSel] = useState<BrunoRequest | null>(null)
-  const [useToken, setUseToken] = useState(true)
   const [resp, setResp] = useState<HttpResponse | null>(null)
   const [sending, setSending] = useState(false)
   const [showHeaders, setShowHeaders] = useState(false)
-  const token = useAuthToken()
+  const [reqTab, setReqTab] = useState<ReqTab>('params')
+  const [methodEdit, setMethodEdit] = useState('GET')
+  const [urlEdit, setUrlEdit] = useState('')
+  const [bodyEdit, setBodyEdit] = useState('')
+  const [headersEdit, setHeadersEdit] = useState<KV[]>([])
+  const [paramsEdit, setParamsEdit] = useState<KV[]>([])
+  const [auth, setAuth] = useState<Auth>({ type: 'none', token: '', username: '', password: '' })
+  const kcToken = useAuthToken()
 
   const load = useCallback(async () => {
     try {
@@ -58,19 +173,40 @@ export function BrunoView({ svc, notify, fail }: { svc: ServiceInfo; notify: Not
 
   const vars = useMemo(() => Object.fromEntries((col?.environments.find((e) => e.name === env)?.vars ? Object.entries(col.environments.find((e) => e.name === env)!.vars) : [])), [col, env])
 
+  // Ao escolher um pedido, carrega método/url/params/body/headers/auth para os editores.
+  useEffect(() => {
+    if (!sel) return
+    setMethodEdit(sel.method)
+    setUrlEdit(sel.url)
+    setBodyEdit(sel.body ?? '')
+    setHeadersEdit(toRows(sel.headers))
+    setParamsEdit(toRows(sel.params))
+    setAuth(sel.auth ? { type: sel.auth.type, token: sel.auth.token ?? '', username: sel.auth.username ?? '', password: sel.auth.password ?? '' } : { type: 'none', token: '', username: '', password: '' })
+    setResp(null)
+    setReqTab(['POST', 'PUT', 'PATCH'].includes(sel.method) ? 'body' : 'params')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel])
+
+  const bodyAllowed = !['GET', 'HEAD'].includes(methodEdit)
+  const resolvedUrl = (): string => {
+    const base = subst(urlEdit, vars)
+    const q = paramsEdit.filter((p) => p.key.trim()).map((p) => `${encodeURIComponent(p.key.trim())}=${encodeURIComponent(subst(p.value, vars))}`)
+    return q.length ? base + (base.includes('?') ? '&' : '?') + q.join('&') : base
+  }
+
   const send = async (): Promise<void> => {
     if (!sel) return
     setSending(true)
     setResp(null)
     try {
-      const url = subst(sel.url, vars)
       const headers: Record<string, string> = {}
-      for (const [k, v] of Object.entries(sel.headers)) headers[k] = subst(v, vars)
-      if (sel.auth?.type === 'bearer' && sel.auth.token) headers.Authorization = `Bearer ${subst(sel.auth.token, vars)}`
-      if (useToken && token && !Object.keys(headers).some((h) => h.toLowerCase() === 'authorization')) headers.Authorization = `Bearer ${token}`
-      const query = Object.entries(sel.params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(subst(v, vars))}`)
-      const finalUrl = query.length ? url + (url.includes('?') ? '&' : '?') + query.join('&') : url
-      setResp(await api.http({ method: sel.method, url: finalUrl, headers, body: sel.body ? subst(sel.body, vars) : undefined }))
+      for (const { key, value } of headersEdit) if (key.trim()) headers[key.trim()] = subst(value, vars)
+      if (!Object.keys(headers).some((h) => h.toLowerCase() === 'authorization')) {
+        if (auth.type === 'bearer' && auth.token.trim()) headers.Authorization = `Bearer ${subst(auth.token, vars)}`
+        else if (auth.type === 'basic' && (auth.username || auth.password)) headers.Authorization = `Basic ${btoa(`${subst(auth.username, vars)}:${subst(auth.password, vars)}`)}`
+        else if (auth.type === 'keycloak' && kcToken) headers.Authorization = `Bearer ${kcToken}`
+      }
+      setResp(await api.http({ method: methodEdit, url: resolvedUrl(), headers, body: bodyAllowed && bodyEdit.trim() ? subst(bodyEdit, vars) : undefined }))
     } catch (e) {
       fail(e)
     } finally {
@@ -78,18 +214,25 @@ export function BrunoView({ svc, notify, fail }: { svc: ServiceInfo; notify: Not
     }
   }
 
-  if (!cols) return <div className="empty">A procurar coleções Bruno…</div>
+  if (!cols) return <div className="empty">Searching for Bruno collections…</div>
   if (!cols.length) {
     return (
       <div className="empty">
-        <p>Nenhuma coleção Bruno encontrada neste serviço.</p>
-        <p className="muted small">Uma coleção Bruno é uma pasta com <span className="mono">bruno.json</span> e ficheiros <span className="mono">.bru</span>. Cria uma no <a className="link" onClick={() => api.openExternal('https://www.usebruno.com')}>Bruno</a> dentro da pasta do serviço.</p>
+        <p>No Bruno collection found in this service.</p>
+        <p className="muted small">A Bruno collection is a folder with <span className="mono">bruno.json</span> and <span className="mono">.bru</span> files. Create one in <a className="link" onClick={() => api.openExternal('https://www.usebruno.com')}>Bruno</a> inside the service folder.</p>
       </div>
     )
   }
 
-  const finalUrl = sel ? subst(sel.url, vars) : ''
-  const missing = sel ? missingVars(sel.url + ' ' + (sel.body ?? '') + ' ' + Object.values(sel.headers).join(' '), vars) : []
+  const missing = sel ? missingVars([urlEdit, bodyEdit, ...headersEdit.map((h) => h.value), ...paramsEdit.map((p) => p.value), auth.token].join(' '), vars) : []
+  const formatJson = (): void => {
+    try {
+      setBodyEdit(JSON.stringify(JSON.parse(bodyEdit), null, 2))
+    } catch {
+      notify('The body is not valid JSON', 'error')
+    }
+  }
+  const kcInfo = kcToken ? decodeJwt(kcToken) : null
   const grouped = new Map<string, BrunoRequest[]>()
   for (const r of col?.requests ?? []) grouped.set(r.folder, [...(grouped.get(r.folder) ?? []), r])
 
@@ -102,11 +245,11 @@ export function BrunoView({ svc, notify, fail }: { svc: ServiceInfo; notify: Not
               {cols.map((c) => <option key={c.dir} value={c.dir}>{c.name} · {c.dir}</option>)}
             </select>
           ) : <span className="mono small grow ellipsis" title={col?.dir}>⧉ {col?.name}</span>}
-          <button className="btn btn-sm" onClick={load} title="reler as coleções">⟳</button>
+          <button className="btn btn-sm" onClick={load} title="reload collections">⟳</button>
         </div>
         {col && col.environments.length > 0 && (
           <div className="ep-list-head" style={{ top: 44 }}>
-            <label className="inline grow">Ambiente
+            <label className="inline grow">Environment
               <select className="input grow" value={env} onChange={(e) => setEnv(e.target.value)}>
                 {col.environments.map((e) => <option key={e.name} value={e.name}>{e.name}</option>)}
               </select>
@@ -124,50 +267,110 @@ export function BrunoView({ svc, notify, fail }: { svc: ServiceInfo; notify: Not
             ))}
           </section>
         ))}
-        {!col?.requests.length && <div className="muted pad small">Coleção sem pedidos.</div>}
+        {!col?.requests.length && <div className="muted pad small">Collection has no requests.</div>}
       </div>
 
       <div className="ep-main">
-        {!sel && <div className="empty">Escolhe um pedido da coleção.</div>}
+        {!sel && <div className="empty">Choose a request from the collection.</div>}
         {sel && (
           <>
-            <div className="row">
-              <span className={`method method-${METHOD_TONE[sel.method] ?? 'other'}`}>{sel.method}</span>
-              <span className="mono small grow ellipsis" title={finalUrl}>{finalUrl}</span>
-              <button className="btn btn-primary" disabled={sending} onClick={send}>{sending ? 'A enviar…' : 'Enviar'}</button>
+            <div className="row bruno-urlbar">
+              <select className={`input bruno-method method-${METHOD_TONE[methodEdit] ?? 'other'}`} value={methodEdit} onChange={(e) => setMethodEdit(e.target.value)}>
+                {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <input className="input mono grow" value={urlEdit} onChange={(e) => setUrlEdit(e.target.value)} spellCheck={false} placeholder="http://localhost:8080/path" />
+              <button className="btn btn-primary" disabled={sending} onClick={send}>{sending ? 'Sending…' : 'Send'}</button>
             </div>
-            {missing.length > 0 && <div className="small" style={{ color: 'var(--amber)' }}>⚠ variáveis por resolver: {missing.map((v) => `{{${v}}}`).join(', ')} — escolhe o ambiente certo</div>}
-            <div className="row">
-              <label className="check"><input type="checkbox" checked={useToken && !!token} disabled={!token} onChange={(e) => setUseToken(e.target.checked)} /> Authorization: Bearer (token do Keycloak)</label>
-              {token ? <span className="muted small">token ativo</span> : <span className="muted small">sem token — obtém-o no separador Endpoints</span>}
-              {token && <button className="btn btn-sm" onClick={() => setToken('')}>Limpar</button>}
+            <div className="muted small mono ellipsis" title={resolvedUrl()}>→ {resolvedUrl()}</div>
+            {missing.length > 0 && <div className="small" style={{ color: 'var(--amber)' }}>⚠ unresolved variables: {missing.map((v) => `{{${v}}}`).join(', ')} — choose the right environment</div>}
+
+            <div className="tabs inline bruno-subtabs">
+              <button className={reqTab === 'params' ? 'active' : ''} onClick={() => setReqTab('params')}>Params{paramsEdit.length ? ` (${paramsEdit.length})` : ''}</button>
+              <button className={reqTab === 'body' ? 'active' : ''} onClick={() => setReqTab('body')}>Body</button>
+              <button className={reqTab === 'headers' ? 'active' : ''} onClick={() => setReqTab('headers')}>Headers{headersEdit.length ? ` (${headersEdit.length})` : ''}</button>
+              <button className={reqTab === 'auth' ? 'active' : ''} onClick={() => setReqTab('auth')}>Auth{auth.type !== 'none' ? ' •' : ''}</button>
             </div>
-            {Object.keys(sel.headers).length > 0 && (
+
+            {reqTab === 'params' && <KvRows rows={paramsEdit} onChange={setParamsEdit} label="Param" />}
+
+            {reqTab === 'headers' && <KvRows rows={headersEdit} onChange={setHeadersEdit} label="Header" />}
+
+            {reqTab === 'body' && (
               <section>
-                <h3>Headers</h3>
-                <pre className="resp-body small">{Object.entries(sel.headers).map(([k, v]) => `${k}: ${subst(v, vars)}`).join('\n')}</pre>
+                <div className="row">
+                  <span className="muted small">Body {sel.bodyType ? `(${sel.bodyType})` : ''}{!bodyAllowed ? ' — not sent for GET/HEAD' : ''}</span>
+                  <span className="grow" />
+                  <button className="btn btn-sm" onClick={formatJson} title="Format as JSON">Format JSON</button>
+                  <button className="btn btn-sm" disabled={bodyEdit === (sel.body ?? '')} onClick={() => setBodyEdit(sel.body ?? '')} title="Reset to original body">Reset</button>
+                </div>
+                <textarea className="input mono bruno-body" value={bodyEdit} onChange={(e) => setBodyEdit(e.target.value)} spellCheck={false} placeholder="(no body — write the payload to send)" />
               </section>
             )}
-            {sel.body && (
+
+            {reqTab === 'auth' && (
               <section>
-                <h3>Body {sel.bodyType && <span className="muted small">({sel.bodyType})</span>}</h3>
-                <pre className="resp-body">{subst(sel.body, vars)}</pre>
+                <label className="inline">Type
+                  <select className="input" value={auth.type} onChange={(e) => setAuth((a) => ({ ...a, type: e.target.value }))}>
+                    <option value="none">No Auth</option>
+                    <option value="bearer">Bearer Token</option>
+                    <option value="basic">Basic</option>
+                    <option value="keycloak">Keycloak token</option>
+                  </select>
+                </label>
+                {auth.type === 'bearer' && (
+                  <input className="input mono" placeholder="token (supports {{var}})" value={auth.token} onChange={(e) => setAuth((a) => ({ ...a, token: e.target.value }))} spellCheck={false} />
+                )}
+                {auth.type === 'basic' && (
+                  <div className="row">
+                    <input className="input grow" placeholder="username" value={auth.username} onChange={(e) => setAuth((a) => ({ ...a, username: e.target.value }))} />
+                    <input className="input grow" type="password" placeholder="password" value={auth.password} onChange={(e) => setAuth((a) => ({ ...a, password: e.target.value }))} />
+                  </div>
+                )}
+                {auth.type === 'keycloak' && (
+                  <>
+                    <div className="row">
+                      {kcToken
+                        ? <span className="muted small">Active token{kcInfo?.username ? ` · ${kcInfo.username}` : ''}{kcInfo?.exp ? ` · expires ${new Date(kcInfo.exp * 1000).toLocaleTimeString()}` : ''}</span>
+                        : <span className="muted small">No active token — get one below.</span>}
+                      {kcToken && <button className="btn btn-sm" onClick={() => setToken('')}>Clear token</button>}
+                    </div>
+                    <KeycloakTokenForm kcPort={kcPort} notify={notify} />
+                  </>
+                )}
+                {auth.type === 'none' && <span className="muted small">No authorization header is sent (unless you add one on the Headers tab).</span>}
               </section>
             )}
+
             <section>
-              <h3>Resposta</h3>
-              {!resp && <div className="muted small">Ainda sem resposta.</div>}
-              {resp?.error && <div className="text-error">Sem resposta: {resp.error}</div>}
+              <h3>Response</h3>
+              {!resp && <div className="muted small">No response yet.</div>}
+              {resp?.error && <div className="text-error">No response: {resp.error}</div>}
               {resp && !resp.error && (
                 <>
                   <div className="row">
                     <span className={`status status-${resp.status < 300 ? 'ok' : resp.status < 400 ? 'redir' : 'err'}`}>{resp.status} {resp.statusText}</span>
                     <span className="muted small">{resp.timeMs} ms · {resp.body.length} bytes{resp.headers['content-type'] ? ` · ${resp.headers['content-type']}` : ''}</span>
                     <span className="grow" />
-                    <button className="btn btn-sm" onClick={() => setShowHeaders((v) => !v)}>{showHeaders ? 'Esconder headers' : `Headers (${Object.keys(resp.headers).length})`}</button>
+                    <button className="btn btn-sm" onClick={() => setShowHeaders((v) => !v)}>{showHeaders ? 'Hide headers' : `Headers (${Object.keys(resp.headers).length})`}</button>
                   </div>
                   {showHeaders && <pre className="resp-body small">{Object.entries(resp.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}</pre>}
-                  <pre className="resp-body">{pretty(resp.body, resp.headers['content-type']) || <span className="muted">(corpo vazio)</span>}</pre>
+                  {(() => {
+                    const events = decodePubsubPull(resp.body)
+                    if (!events) return null
+                    return (
+                      <div className="pubsub-events">
+                        <div className="muted small">Decoded Pub/Sub events: {events.length}</div>
+                        {events.length === 0 && <div className="muted small">(no messages — create an operation first, or the message has already been read)</div>}
+                        {events.map((e, i) => (
+                          <div className="pubsub-event" key={(e.messageId ?? '') + i}>
+                            <pre className="resp-body">{pretty(e.data, 'json')}</pre>
+                            {e.attributes && Object.keys(e.attributes).length > 0 && <div className="muted small mono">attrs: {JSON.stringify(e.attributes)}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                  <pre className="resp-body">{pretty(resp.body, resp.headers['content-type']) || <span className="muted">(empty body)</span>}</pre>
                 </>
               )}
             </section>

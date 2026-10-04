@@ -16,7 +16,7 @@ export function Toast({ msg, onClose }: { msg: ToastMsg | null; onClose: () => v
   return (
     <div className={`toast toast-${msg.kind}`} role="status">
       <span>{msg.text}</span>
-      <button className="toast-close" onClick={onClose} aria-label="fechar">×</button>
+      <button className="toast-close" onClick={onClose} aria-label="close">×</button>
     </div>
   )
 }

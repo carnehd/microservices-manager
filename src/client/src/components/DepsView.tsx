@@ -9,8 +9,8 @@ function tag(d: MavenDep): { text: string; tone: 'green' | 'purple' | 'blue' | '
   if (a.startsWith('spring-boot-starter') || d.groupId.startsWith('org.springframework.boot')) return { text: 'Spring Boot', tone: 'green' }
   if (d.groupId === 'org.keycloak' || a.includes('oauth2')) return { text: 'Keycloak / OAuth2', tone: 'purple' }
   if (a.startsWith('springdoc') || a.startsWith('springfox')) return { text: 'Swagger', tone: 'blue' }
-  if (/jpa|jdbc|postgres|mysql|mariadb|ojdbc|h2$|hsqldb|flyway|liquibase|mongodb|redis|r2dbc|hibernate/.test(a)) return { text: 'Base de dados / cache', tone: 'amber' }
-  if (d.scope === 'test') return { text: 'teste', tone: 'muted' }
+  if (/jpa|jdbc|postgres|mysql|mariadb|ojdbc|h2$|hsqldb|flyway|liquibase|mongodb|redis|r2dbc|hibernate/.test(a)) return { text: 'Database / cache', tone: 'amber' }
+  if (d.scope === 'test') return { text: 'test', tone: 'muted' }
   return null
 }
 
@@ -59,23 +59,23 @@ export function DepsView({ svc, logs, states, fail }: { svc: ServiceInfo; logs: 
     }
   }
 
-  if (!info) return <div className="empty">A ler pom.xml…</div>
+  if (!info) return <div className="empty">Reading pom.xml…</div>
   const multi = info.modules.length > 1
 
   return (
     <div className="config">
       <section>
         <div className="row" style={{ flexWrap: 'wrap' }}>
-          <span>{info.total} dependências declaradas{multi ? ` em ${info.modules.length} módulos` : ''}</span>
-          {info.parent && <Badge tone="green" title="parent do pom">{info.parent.artifactId} {info.parent.version ?? ''}</Badge>}
+          <span>{info.total} declared dependencies{multi ? ` across ${info.modules.length} modules` : ''}</span>
+          {info.parent && <Badge tone="green" title="pom parent">{info.parent.artifactId} {info.parent.version ?? ''}</Badge>}
           {info.springBootVersion && !info.parent?.artifactId.startsWith('spring-boot') && <Badge tone="green">Spring Boot {info.springBootVersion}</Badge>}
           <span className="grow" />
           <div className="tabs inline">
-            <button className={view === 'declared' ? 'active' : ''} onClick={() => setView('declared')}>Declaradas (pom.xml)</button>
-            <button className={view === 'tree' ? 'active' : ''} onClick={() => setView('tree')}>Árvore resolvida{treeLines.length ? ` (${treeLines.length})` : ''}</button>
+            <button className={view === 'declared' ? 'active' : ''} onClick={() => setView('declared')}>Declared (pom.xml)</button>
+            <button className={view === 'tree' ? 'active' : ''} onClick={() => setView('tree')}>Resolved tree{treeLines.length ? ` (${treeLines.length})` : ''}</button>
           </div>
-          <button className="btn btn-sm" disabled={treeRunning} onClick={resolveTree} title="mvn dependency:tree — inclui as dependências transitivas e as versões efetivas">
-            {treeRunning ? 'A resolver…' : '⟳ Resolver com Maven'}
+          <button className="btn btn-sm" disabled={treeRunning} onClick={resolveTree} title="mvn dependency:tree — includes transitive dependencies and effective versions">
+            {treeRunning ? 'Resolving…' : '⟳ Resolve with Maven'}
           </button>
         </div>
       </section>
@@ -83,10 +83,10 @@ export function DepsView({ svc, logs, states, fail }: { svc: ServiceInfo; logs: 
       {view === 'declared' && (
         <section>
           <div className="row">
-            <input className="input grow" placeholder="filtrar (artifact, grupo, versão, scope)…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            <input className="input grow" placeholder="filter (artifact, group, version, scope)…" value={filter} onChange={(e) => setFilter(e.target.value)} />
           </div>
           <table className="grid">
-            <thead><tr>{multi && <th>Módulo</th>}<th>Dependência</th><th>Versão</th><th>Scope</th><th></th></tr></thead>
+            <thead><tr>{multi && <th>Module</th>}<th>Dependency</th><th>Version</th><th>Scope</th><th></th></tr></thead>
             <tbody>
               {rows.map(({ m, d }, i) => {
                 const t = tag(d)
@@ -94,26 +94,26 @@ export function DepsView({ svc, logs, states, fail }: { svc: ServiceInfo; logs: 
                   <tr key={`${m}:${d.groupId}:${d.artifactId}:${i}`}>
                     {multi && <td className="mono small muted">{m}</td>}
                     <td className="mono small"><span className="muted">{d.groupId}:</span>{d.artifactId}{d.optional && <span className="muted"> (optional)</span>}</td>
-                    <td className="mono small">{d.version ?? <span className="muted" title="a versão vem do parent/BOM (dependencyManagement); vê a árvore resolvida">gerida</span>}{d.version && d.managed ? <span className="muted" title="versão do dependencyManagement do projeto"> ·</span> : null}</td>
+                    <td className="mono small">{d.version ?? <span className="muted" title="the version comes from the parent/BOM (dependencyManagement); see the resolved tree">managed</span>}{d.version && d.managed ? <span className="muted" title="version from the project's dependencyManagement"> ·</span> : null}</td>
                     <td className="small">{d.scope}</td>
                     <td>{t && <Badge tone={t.tone}>{t.text}</Badge>}</td>
                   </tr>
                 )
               })}
-              {!rows.length && <tr><td colSpan={5} className="muted">{filter ? 'Nada corresponde ao filtro.' : 'Sem dependências.'}</td></tr>}
+              {!rows.length && <tr><td colSpan={5} className="muted">{filter ? 'Nothing matches the filter.' : 'No dependencies.'}</td></tr>}
             </tbody>
           </table>
-          <p className="muted small">"gerida" = versão definida pelo parent (ex.: <span className="mono">spring-boot-starter-parent</span>) — a versão efetiva aparece na árvore resolvida.</p>
+          <p className="muted small">"managed" = version set by the parent (e.g.: <span className="mono">spring-boot-starter-parent</span>) — the effective version appears in the resolved tree.</p>
         </section>
       )}
 
       {view === 'tree' && (
         <section>
           <div className="row">
-            <input className="input grow" placeholder="filtrar linhas da árvore…" value={treeFilter} onChange={(e) => setTreeFilter(e.target.value)} />
-            <span className="muted small">{treeRunning ? 'a correr mvn dependency:tree…' : treeState ? `terminou (exit ${treeState.exitCode ?? '?'})` : 'ainda não resolvida'}</span>
+            <input className="input grow" placeholder="filter tree lines…" value={treeFilter} onChange={(e) => setTreeFilter(e.target.value)} />
+            <span className="muted small">{treeRunning ? 'running mvn dependency:tree…' : treeState ? `finished (exit ${treeState.exitCode ?? '?'})` : 'not resolved yet'}</span>
           </div>
-          <pre className="resp-body" style={{ maxHeight: '60vh' }}>{treeLines.length ? treeLines.join('\n') : treeRunning ? 'a aguardar output do Maven…' : 'Carrega em "Resolver com Maven" para obter a árvore completa (transitivas e versões efetivas).'}</pre>
+          <pre className="resp-body" style={{ maxHeight: '60vh' }}>{treeLines.length ? treeLines.join('\n') : treeRunning ? 'waiting for Maven output…' : 'Click "Resolve with Maven" to get the full tree (transitive and effective versions).'}</pre>
         </section>
       )}
     </div>

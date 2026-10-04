@@ -24,7 +24,7 @@ if (hasUi) {
   })
 } else {
   app.get('/', (_req, res) => {
-    res.type('text').send('UI não compilada: corre "npm run build" (em desenvolvimento usa "npm run dev", que abre o Vite em http://localhost:5173).')
+    res.type('text').send('UI not built: run "npm run build" (in development use "npm run dev", which opens Vite at http://localhost:5173).')
   })
 }
 

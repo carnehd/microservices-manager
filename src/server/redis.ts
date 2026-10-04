@@ -34,7 +34,7 @@ async function get(s: RedisSettings): Promise<RedisClientType> {
     await c.connect()
   } catch (e) {
     await c.disconnect().catch(() => {})
-    throw new Error(`Redis não responde em ${s.host}:${s.port}: ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`Redis is not responding at ${s.host}:${s.port}: ${e instanceof Error ? e.message : String(e)}`)
   }
   client = c
   clientKey = k
@@ -69,7 +69,7 @@ export async function info(s: RedisSettings): Promise<RedisInfo> {
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    return { ...base, error: msg.includes(s.host) ? msg : `Redis não responde em ${s.host}:${s.port}: ${msg}` }
+    return { ...base, error: msg.includes(s.host) ? msg : `Redis is not responding at ${s.host}:${s.port}: ${msg}` }
   }
 }
 
@@ -82,7 +82,7 @@ export async function scan(s: RedisSettings, pattern: string, cursor: string, co
 }
 
 export async function getKey(s: RedisSettings, key: string): Promise<RedisKeyValue> {
-  if (!key) throw new Error('Chave obrigatória')
+  if (!key) throw new Error('Key required')
   const c = await get(s)
   const type = await c.type(key)
   const ttl = await c.ttl(key)
@@ -95,7 +95,7 @@ export async function getKey(s: RedisSettings, key: string): Promise<RedisKeyVal
     case 'set': out.length = await c.sCard(key); out.value = (await c.sMembers(key)).slice(0, 1000); break
     case 'zset': out.length = await c.zCard(key); out.value = (await c.zRangeWithScores(key, 0, 999)).map((m) => ({ member: String(m.value), score: m.score })); break
     case 'stream': out.length = await c.xLen(key); out.value = await c.xRange(key, '-', '+', { COUNT: 100 }); break
-    case 'none': throw new Error(`A chave "${key}" não existe`)
+    case 'none': throw new Error(`Key "${key}" does not exist`)
     default: {
       // Tipos de módulos (ReJSON-RL, TSDB-TYPE…): tenta JSON.GET; senão mostra só o tipo
       if (type.startsWith('ReJSON')) out.value = await c.sendCommand(['JSON.GET', key]).catch(() => null)
@@ -105,7 +105,7 @@ export async function getKey(s: RedisSettings, key: string): Promise<RedisKeyVal
 }
 
 export async function setString(s: RedisSettings, key: string, value: string, ttl?: number): Promise<void> {
-  if (!key) throw new Error('Chave obrigatória')
+  if (!key) throw new Error('Key required')
   const c = await get(s)
   await c.set(key, value, ttl && ttl > 0 ? { EX: Math.floor(ttl) } : undefined)
 }
@@ -140,8 +140,8 @@ const BLOCKED = new Set(['SUBSCRIBE', 'PSUBSCRIBE', 'SSUBSCRIBE', 'MONITOR', 'SY
 
 export async function command(s: RedisSettings, line: string): Promise<unknown> {
   const args = splitArgs(line.trim())
-  if (!args.length) throw new Error('Comando vazio')
-  if (BLOCKED.has(args[0].toUpperCase())) throw new Error(`Comando ${args[0].toUpperCase()} não permitido a partir da app`)
+  if (!args.length) throw new Error('Empty command')
+  if (BLOCKED.has(args[0].toUpperCase())) throw new Error(`Command ${args[0].toUpperCase()} not allowed from the app`)
   const c = await get(s)
   return c.sendCommand(args)
 }

@@ -3,16 +3,16 @@ import { BUILD_MODES, type AppSettings, type ProcState, type ServiceInfo, type S
 import { api } from '../api'
 import type { LogsApi } from '../hooks'
 import { ConfigView } from './ConfigView'
-import { EndpointsView } from './EndpointsView'
 import { BrunoView } from './BrunoView'
 import { EnvsView } from './EnvsView'
 import { JarsView } from './JarsView'
 import { GitView } from './GitView'
 import { DepsView } from './DepsView'
+import { SrDatabaseView } from './SrDatabaseView'
 import { LogView } from './LogView'
 import { Badge, StatusPill, isActive } from './common'
 
-type Tab = 'logs' | 'endpoints' | 'bruno' | 'envs' | 'jars' | 'deps' | 'git' | 'config'
+type Tab = 'logs' | 'bruno' | 'envs' | 'jars' | 'deps' | 'srdb' | 'git' | 'config'
 
 export function ServiceView({
   svc, state, states, settings, logs, onStart, onStartWithDeps, onStop, onSaveServiceSettings, onSettingsChanged, onGitChanged, notify, fail
@@ -44,8 +44,9 @@ export function ServiceView({
   const ss = settings.services[svc.id] ?? {}
   const active = isActive(state)
   const running = state?.status === 'running' && !!state.mode && !BUILD_MODES.has(state.mode)
-  const port = state?.detectedPort ?? ss.port ?? svc.port ?? 8080
-  const baseUrl = `http://localhost:${port}${svc.contextPath ?? ''}`
+  const building = active && !!state?.mode && BUILD_MODES.has(state.mode)
+  const runStarting = state?.status === 'starting' && !building
+  const stopping = state?.status === 'stopping'
   const deps = (ss.dependsOn && ss.dependsOn.length ? ss.dependsOn : svc.dependsOn) ?? []
   const debugPort = ss.debugPort || defaultDebugPort
   // Ficheiros de configuração que o Spring vai carregar com o perfil definido em Configuração
@@ -57,7 +58,7 @@ export function ServiceView({
     setDeploying(true)
     try {
       const r = await api.kcDeploySpi(svc.id, { build, restart: true })
-      notify(`${build ? 'Compilado e copiado' : 'Jar copiado'} para ${r.dest.split(/[\\/]/).pop()}; Keycloak reiniciado`, 'success')
+      notify(`${build ? 'Compiled and copied' : 'Jar copied'} to ${r.dest.split(/[\\/]/).pop()}; Keycloak restarted`, 'success')
     } catch (e) {
       fail(e)
     } finally {
@@ -78,33 +79,49 @@ export function ServiceView({
       </div>
 
       <div className="actions">
-        {svc.kind === 'spring-boot' && !active && (
+        {svc.kind === 'spring-boot' && (
           <>
-            <label className={`switch${ss.debug ? ' on' : ''}`} title={`Quando ligado, "Arrancar" (e "Arrancar todos") usa JDWP em localhost:${debugPort}, pronto para attach do IDE`}>
-              <input type="checkbox" checked={!!ss.debug} onChange={(e) => onSaveServiceSettings(svc.id, { ...ss, debug: e.target.checked }, true)} />
+            <label className={`switch${ss.debug ? ' on' : ''}${active ? ' disabled' : ''}`} title={`When on, "Start" (and "Start all") uses JDWP on localhost:${debugPort}, ready for IDE attach`}>
+              <input type="checkbox" checked={!!ss.debug} disabled={active} onChange={(e) => onSaveServiceSettings(svc.id, { ...ss, debug: e.target.checked }, true)} />
               <span className="switch-track"><span className="switch-knob" /></span>
-              <span className="switch-label">🐞 Debug :{debugPort}</span>
+              <span className="switch-label">Debug :{debugPort}</span>
             </label>
-            <button className="btn btn-primary" onClick={() => onStart(svc.id, ss.debug ? 'debug' : 'run')} title={`Carrega ${configFiles}${profiles.length ? '' : ' (sem perfil: define-o em Configuração ou Ambientes)'}${ss.debug ? ` · JDWP em localhost:${debugPort} (suspend=n)` : ''}`}>
-              ▶ Arrancar{profileLabel}{ss.port ? ` · :${ss.port}` : ''}{ss.debug ? ' 🐞' : ''}
-            </button>
-            {deps.length > 0 && (
-              <button className="btn" onClick={() => onStartWithDeps(svc.id, ss.debug ? 'debug' : 'run')} title={`Arranca primeiro as dependências (${deps.join(', ')}) que não estejam a correr, e depois este serviço`}>
-                ▶ + dependências ({deps.length})
+            <label className={`switch${ss.skipTests === false ? '' : ' on'}${active ? ' disabled' : ''}`} title="When on, Build/Clean build/Clean install run with -DskipTests (tests are not run)">
+              <input type="checkbox" checked={ss.skipTests !== false} disabled={active} onChange={(e) => onSaveServiceSettings(svc.id, { ...ss, skipTests: e.target.checked }, true)} />
+              <span className="switch-track"><span className="switch-knob" /></span>
+              <span className="switch-label">skip tests</span>
+            </label>
+            <label className={`switch${ss.spotless ? ' on' : ''}${active ? ' disabled' : ''}`} title="When on, runs spotless:apply (formats the code) before builds and startup">
+              <input type="checkbox" checked={!!ss.spotless} disabled={active} onChange={(e) => onSaveServiceSettings(svc.id, { ...ss, spotless: e.target.checked }, true)} />
+              <span className="switch-track"><span className="switch-knob" /></span>
+              <span className="switch-label">spotless</span>
+            </label>
+            {!active && (
+              <button className="btn btn-primary" onClick={() => onStart(svc.id, ss.debug ? 'debug' : 'run')} title={`Loads ${configFiles}${profiles.length ? '' : ' (no profile: set it in Configuration or Environments)'}${ss.debug ? ` · JDWP on localhost:${debugPort} (suspend=n)` : ''}`}>
+                ▶ Start{profileLabel}{ss.port ? ` · :${ss.port}` : ''}
+              </button>
+            )}
+            {runStarting && <button className="btn btn-primary" disabled>starting…</button>}
+            {active && !runStarting && (
+              <button className="btn btn-danger" disabled={stopping} onClick={() => onStop(svc.id)}>{stopping ? 'stopping…' : '■ Stop'}</button>
+            )}
+            {!active && deps.length > 0 && (
+              <button className="btn" onClick={() => onStartWithDeps(svc.id, ss.debug ? 'debug' : 'run')} title={`Starts first the dependencies (${deps.join(', ')}) that aren't running, then this service`}>
+                ▶ + dependencies ({deps.length})
               </button>
             )}
           </>
         )}
-        {active && (
-          <button className="btn btn-danger" disabled={state?.status === 'stopping'} onClick={() => onStop(svc.id)}>■ Parar</button>
+        {active && svc.kind !== 'spring-boot' && (
+          <button className="btn btn-danger" disabled={stopping} onClick={() => onStop(svc.id)}>{stopping ? 'stopping…' : '■ Stop'}</button>
         )}
         {svc.kind === 'keycloak-spi' && (
           <>
-            <button className="btn btn-primary" disabled={active || deploying} onClick={() => deploy(true)} title="mvn package + copiar o jar para providers + reiniciar o Keycloak">
-              {deploying ? 'A instalar…' : '⇪ Build & instalar'}
+            <button className="btn btn-primary" disabled={active || deploying} onClick={() => deploy(true)} title="mvn package + copy the jar to providers + restart Keycloak">
+              {deploying ? 'Installing…' : '⇪ Build & install'}
             </button>
-            <button className="btn" disabled={active || deploying || !svc.jarPath} onClick={() => deploy(false)} title={svc.jarPath ? `copiar ${svc.jarPath.split(/[\\/]/).pop()} (já compilado, ex. no IntelliJ) para providers + reiniciar` : 'sem jar em target/ — compila primeiro'}>
-              ⇪ Instalar jar existente
+            <button className="btn" disabled={active || deploying || !svc.jarPath} onClick={() => deploy(false)} title={svc.jarPath ? `copy ${svc.jarPath.split(/[\\/]/).pop()} (already compiled, e.g. in IntelliJ) to providers + restart` : 'no jar in target/ — build first'}>
+              ⇪ Install existing jar
             </button>
           </>
         )}
@@ -112,37 +129,30 @@ export function ServiceView({
       <div className="actions actions-secondary">
         <button className="btn" disabled={active} onClick={() => onStart(svc.id, 'build')} title={`mvn ${ss.skipTests === false ? "" : "-DskipTests "}package`}>Build</button>
         <button className="btn" disabled={active} onClick={() => onStart(svc.id, 'clean-build')} title={`mvn clean ${ss.skipTests === false ? "" : "-DskipTests "}package`}>Clean build</button>
-        <button className="btn" disabled={active} onClick={() => onStart(svc.id, 'clean-install')} title={`mvn clean ${ss.skipTests === false ? '' : '-DskipTests '}install (instala no repositório local ~/.m2)`}>Clean install</button>
-        <button className="btn" disabled={active} onClick={() => onStart(svc.id, 'spotless')} title="mvn spotless:apply — formata o código segundo as regras do projeto">Spotless</button>
-        <label className={`switch${ss.skipTests === false ? '' : ' on'}`} title="Quando ligado, Build/Clean build/Clean install correm com -DskipTests (não corre os testes)">
-          <input type="checkbox" checked={ss.skipTests !== false} onChange={(e) => onSaveServiceSettings(svc.id, { ...ss, skipTests: e.target.checked }, true)} />
-          <span className="switch-track"><span className="switch-knob" /></span>
-          <span className="switch-label">skip testes</span>
-        </label>
-        {svc.kind === 'spring-boot' && running && (
-          <button className="btn" onClick={() => api.openExternal(baseUrl)} title={baseUrl}>Abrir URL</button>
-        )}
-        <button className="btn" onClick={() => api.openPath(svc.path)}>Pasta</button>
+        <button className="btn" disabled={active} onClick={() => onStart(svc.id, 'clean-install')} title={`mvn clean ${ss.skipTests === false ? '' : '-DskipTests '}install (installs to the local repository ~/.m2)`}>Clean install</button>
+        <button className="btn" disabled={active} onClick={() => onStart(svc.id, 'spotless')} title="mvn spotless:apply — formats the code according to the project rules">Spotless</button>
+        <span className="grow" />
+        <button className="btn" onClick={() => api.openPath(svc.path)}>Folder</button>
       </div>
 
       <div className="tabs">
         <button className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>Logs</button>
-        {svc.kind === 'spring-boot' && <button className={tab === 'endpoints' ? 'active' : ''} onClick={() => setTab('endpoints')}>Endpoints</button>}
         {(svc.brunoCollections?.length ?? 0) > 0 && <button className={tab === 'bruno' ? 'active' : ''} onClick={() => setTab('bruno')}>Bruno<span className="count">{svc.brunoCollections!.length}</span></button>}
         {svc.kind === 'keycloak-spi' && <button className={tab === 'jars' ? 'active' : ''} onClick={() => setTab('jars')}>Jars</button>}
-        {svc.kind === 'spring-boot' && <button className={tab === 'envs' ? 'active' : ''} onClick={() => setTab('envs')}>Ambientes{svc.profiles.length ? <span className="count">{svc.profiles.length}</span> : null}</button>}
-        <button className={tab === 'deps' ? 'active' : ''} onClick={() => setTab('deps')}>Dependências</button>
+        {svc.kind === 'spring-boot' && <button className={tab === 'envs' ? 'active' : ''} onClick={() => setTab('envs')}>Environments{svc.profiles.length ? <span className="count">{svc.profiles.length}</span> : null}</button>}
+        <button className={tab === 'deps' ? 'active' : ''} onClick={() => setTab('deps')}>Dependencies</button>
+        {svc.srDatabase && <button className={tab === 'srdb' ? 'active' : ''} onClick={() => setTab('srdb')}>Database</button>}
         <button className={tab === 'git' ? 'active' : ''} onClick={() => setTab('git')}>Git</button>
-        <button className={tab === 'config' ? 'active' : ''} onClick={() => setTab('config')}>Configuração</button>
+        <button className={tab === 'config' ? 'active' : ''} onClick={() => setTab('config')}>Configuration</button>
       </div>
 
       <div className="tab-body">
         {tab === 'logs' && <LogView lines={logs.get(svc.id)} version={logs.version} onClear={() => logs.clear(svc.id)} />}
-        {tab === 'endpoints' && <EndpointsView svc={svc} baseUrl={baseUrl} running={running} kcPort={settings.keycloak.httpPort} notify={notify} />}
-        {tab === 'bruno' && <BrunoView svc={svc} notify={notify} fail={fail} />}
+        {tab === 'bruno' && <BrunoView svc={svc} kcPort={settings.keycloak.httpPort} notify={notify} fail={fail} />}
         {tab === 'jars' && <JarsView svc={svc} notify={notify} fail={fail} />}
-        {tab === 'envs' && <EnvsView svc={svc} settings={ss} notify={notify} fail={fail} onChanged={onSettingsChanged} onSetProfile={(p) => onSaveServiceSettings(svc.id, { ...ss, profile: p }, true)} />}
+        {tab === 'envs' && <EnvsView svc={svc} settings={ss} notify={notify} fail={fail} onChanged={onSettingsChanged} onSetProfile={async (p) => { await api.setEnvProfile(svc.id, p); await onSettingsChanged() }} />}
         {tab === 'deps' && <DepsView svc={svc} logs={logs} states={states} fail={fail} />}
+        {tab === 'srdb' && <SrDatabaseView svc={svc} settings={settings} running={running} notify={notify} fail={fail} />}
         {tab === 'git' && <GitView svc={svc} notify={notify} fail={fail} onChanged={onGitChanged} />}
         {tab === 'config' && (
           <ConfigView svc={svc} settings={ss} defaultDebugPort={defaultDebugPort} onSave={(next) => onSaveServiceSettings(svc.id, next)} />
