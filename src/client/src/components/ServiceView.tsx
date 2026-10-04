@@ -137,11 +137,11 @@ export function ServiceView({
 
       <div className="tabs">
         <button className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>Logs</button>
+        {svc.kind === 'spring-boot' && <button className={tab === 'envs' ? 'active' : ''} onClick={() => setTab('envs')}>Environments{svc.profiles.length ? <span className="count">{svc.profiles.length}</span> : null}</button>}
+        {svc.srDatabase && <button className={tab === 'srdb' ? 'active' : ''} onClick={() => setTab('srdb')}>Database</button>}
         {(svc.brunoCollections?.length ?? 0) > 0 && <button className={tab === 'bruno' ? 'active' : ''} onClick={() => setTab('bruno')}>Bruno<span className="count">{svc.brunoCollections!.length}</span></button>}
         {svc.kind === 'keycloak-spi' && <button className={tab === 'jars' ? 'active' : ''} onClick={() => setTab('jars')}>Jars</button>}
-        {svc.kind === 'spring-boot' && <button className={tab === 'envs' ? 'active' : ''} onClick={() => setTab('envs')}>Environments{svc.profiles.length ? <span className="count">{svc.profiles.length}</span> : null}</button>}
         <button className={tab === 'deps' ? 'active' : ''} onClick={() => setTab('deps')}>Dependencies</button>
-        {svc.srDatabase && <button className={tab === 'srdb' ? 'active' : ''} onClick={() => setTab('srdb')}>Database</button>}
         <button className={tab === 'git' ? 'active' : ''} onClick={() => setTab('git')}>Git</button>
         <button className={tab === 'config' ? 'active' : ''} onClick={() => setTab('config')}>Configuration</button>
       </div>
