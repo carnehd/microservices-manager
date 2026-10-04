@@ -144,6 +144,8 @@ export interface ServiceSettings {
   debug?: boolean
   /** Última composição de perfis feita na app (para regenerar com as mesmas escolhas) */
   envMix?: EnvMix
+  /** Override dos valores da BD SR detetados (database/schema); vazio = usar o detetado */
+  srDb?: { database?: string; schema?: string }
   jvmArgs?: string
   extraArgs?: string
   debugPort?: number

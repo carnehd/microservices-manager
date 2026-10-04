@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { promises as fs, readdirSync, statSync } from 'fs'
 import { basename, delimiter, join } from 'path'
-import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type StartMode } from '../shared/types'
+import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type SrDbInfo, type StartMode } from '../shared/types'
 import { addSseClient, broadcast } from './events'
 import { listDirs, openPath, openTerminal } from './fsapi'
 import { containerAction, containerState, engineInfo, ensureContainer, execContainerCommand, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
@@ -512,25 +512,32 @@ apiRouter.post('/services/:id/start', h((req) => startService(param(req, 'id'), 
 apiRouter.get('/services/:id/dep-order', h((req) => ({ effective: effectiveDeps(param(req, 'id')), order: depOrder(param(req, 'id')) })))
 
 // Base de dados de um microserviço SR (criar a partir do que foi detetado)
-apiRouter.get('/services/:id/srdb', h((req) => {
-  const svc = findService(param(req, 'id'))
+// Spec efetiva = valores detetados no scan + overrides guardados nas settings do serviço.
+function effectiveSrSpec(id: string): SrDbInfo {
+  const svc = findService(id)
   if (!svc.srDatabase) throw new Error('This service has no detected SR database')
-  return srDbStatus(svc.srDatabase)
-}))
-apiRouter.post('/services/:id/srdb/create', h((req) => {
-  const svc = findService(param(req, 'id'))
-  if (!svc.srDatabase) throw new Error('This service has no detected SR database')
-  return createSrDb(svc.srDatabase, !!req.body?.reset)
-}))
-apiRouter.post('/services/:id/srdb/drop', h((req) => {
-  const svc = findService(param(req, 'id'))
-  if (!svc.srDatabase) throw new Error('This service has no detected SR database')
-  return dropSrDb(svc.srDatabase)
-}))
-apiRouter.get('/services/:id/srdb/table', h((req) => {
-  const svc = findService(param(req, 'id'))
-  if (!svc.srDatabase) throw new Error('This service has no detected SR database')
-  return srTableData(svc.srDatabase, str(req.query.name), Number(str(req.query.limit)) || 100)
+  const o = getSettings().services[id]?.srDb
+  const database = o?.database?.trim() || svc.srDatabase.database
+  const schema = o?.schema?.trim() || svc.srDatabase.schema
+  const edited = database !== svc.srDatabase.database || schema !== svc.srDatabase.schema
+  return { ...svc.srDatabase, database, schema, source: edited ? `${svc.srDatabase.source} · edited` : svc.srDatabase.source }
+}
+apiRouter.get('/services/:id/srdb', h((req) => srDbStatus(effectiveSrSpec(param(req, 'id')))))
+apiRouter.post('/services/:id/srdb/create', h((req) => createSrDb(effectiveSrSpec(param(req, 'id')), !!req.body?.reset)))
+apiRouter.post('/services/:id/srdb/drop', h((req) => dropSrDb(effectiveSrSpec(param(req, 'id')))))
+apiRouter.get('/services/:id/srdb/table', h((req) => srTableData(effectiveSrSpec(param(req, 'id')), str(req.query.name), Number(str(req.query.limit)) || 100)))
+// Guarda (ou limpa) o override database/schema detetado
+apiRouter.put('/services/:id/srdb/spec', h((req) => {
+  const id = param(req, 'id')
+  findService(id) // valida que existe
+  const database = typeof req.body?.database === 'string' ? req.body.database.trim() : ''
+  const schema = typeof req.body?.schema === 'string' ? req.body.schema.trim() : ''
+  const s = getSettings()
+  const ss: ServiceSettings = { ...(s.services[id] ?? {}) }
+  if (database || schema) ss.srDb = { ...(database ? { database } : {}), ...(schema ? { schema } : {}) }
+  else delete ss.srDb
+  saveSettings({ services: { ...s.services, [id]: ss } })
+  return effectiveSrSpec(id)
 }))
 apiRouter.post('/services/:id/start-with-deps', h((req) => startWithDeps(param(req, 'id'), req.body?.mode as StartMode)))
 // ---- Postgres (bases de dados por serviço) ----

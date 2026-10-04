@@ -29,6 +29,9 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
   const [tableData, setTableData] = useState<SrTableData | null>(null)
   const [tableBusy, setTableBusy] = useState(false)
   const [limit, setLimit] = useState(100)
+  const [editing, setEditing] = useState(false)
+  const [editDb, setEditDb] = useState('')
+  const [editSchema, setEditSchema] = useState('')
 
   const refresh = useCallback(async () => {
     try {
@@ -124,19 +127,40 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
     }
   }
 
-  const sr = svc.srDatabase
-  if (!sr) return <div className="muted pad">No SR database detected for this service.</div>
+  if (!svc.srDatabase) return <div className="muted pad">No SR database detected for this service.</div>
+  // valores em uso = os detetados + overrides guardados (vêm no status.spec)
+  const sr = status?.spec ?? svc.srDatabase
+
+  const startEdit = () => { setEditDb(sr.database); setEditSchema(sr.schema); setEditing(true) }
+  const saveSpec = async () => {
+    setBusy('spec')
+    try {
+      await api.srdb.saveSpec(svc.id, { database: editDb.trim(), schema: editSchema.trim() })
+      notify('Database values updated', 'success')
+      setEditing(false)
+      await refresh()
+    } catch (e) { fail(e) } finally { setBusy(null) }
+  }
+  const resetSpec = async () => {
+    setBusy('spec')
+    try {
+      await api.srdb.saveSpec(svc.id, {}) // limpa override → volta ao detetado
+      notify('Back to the detected values', 'success')
+      setEditing(false)
+      await refresh()
+    } catch (e) { fail(e) } finally { setBusy(null) }
+  }
 
   const pg = settings.postgres
   const host = 'localhost'
   const password = pg.superPassword ?? ''
   const jdbc = `jdbc:postgresql://${host}:${pg.port}/${sr.database}?currentSchema=${sr.schema}`
 
-  const fields: Array<{ label: string; value: string; display?: React.ReactNode; extra?: React.ReactNode }> = [
+  const fields: Array<{ label: string; value: string; display?: React.ReactNode; extra?: React.ReactNode; editKey?: 'database' | 'schema' }> = [
     { label: 'Host', value: host },
     { label: 'Port', value: String(pg.port) },
-    { label: 'Database', value: sr.database },
-    { label: 'Schema', value: sr.schema },
+    { label: 'Database', value: sr.database, editKey: 'database' },
+    { label: 'Schema', value: sr.schema, editKey: 'schema' },
     { label: 'User', value: pg.superUser },
     {
       label: 'Password',
@@ -155,17 +179,32 @@ export function SrDatabaseView({ svc, settings, running, notify, fail }: {
     <div className="srdb-view">
       {/* ── Ligação (DBeaver) ───────────────────────────── */}
       <div className="srdb-card">
-        <h3>Connection (DBeaver) <span className="muted small">({sr.source})</span></h3>
+        <div className="row">
+          <h3 style={{ margin: 0 }}>Detected values <span className="muted small">({sr.source})</span></h3>
+          <span className="grow" />
+          {!editing && <button className="btn btn-sm" onClick={startEdit} title="Edit the database/schema detected from the microservice">Edit</button>}
+          {editing && <>
+            <button className="btn btn-sm btn-primary" disabled={busy !== null || !editDb.trim() || !editSchema.trim()} onClick={() => void saveSpec()}>{busy === 'spec' ? 'Saving…' : 'Save'}</button>
+            <button className="btn btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+            <button className="btn btn-sm btn-ghost" disabled={busy !== null} onClick={() => void resetSpec()} title="Back to the values detected from the microservice">Reset to detected</button>
+          </>}
+        </div>
         <div className="srdb-fields">
           {fields.map((f) => (
             <div className="srdb-field" key={f.label}>
               <span className="srdb-field-label">{f.label}</span>
-              <span className="srdb-field-value mono">{f.display ?? f.value}</span>
-              {f.extra}
-              <button className="btn btn-sm" title={`Copy ${f.label}`} disabled={!f.value} onClick={() => void copy(f.value)}>copy</button>
+              {editing && f.editKey ? (
+                <input className="input mono grow" value={f.editKey === 'database' ? editDb : editSchema}
+                  onChange={(e) => (f.editKey === 'database' ? setEditDb(e.target.value) : setEditSchema(e.target.value))} spellCheck={false} />
+              ) : (
+                <span className="srdb-field-value mono">{f.display ?? f.value}</span>
+              )}
+              {!editing && f.extra}
+              {!editing && <button className="btn btn-sm" title={`Copy ${f.label}`} disabled={!f.value} onClick={() => void copy(f.value)}>copy</button>}
             </div>
           ))}
         </div>
+        {editing && <p className="muted small">Override the values detected in the microservice (application.yaml / docker-compose). Used to create/check the database.</p>}
       </div>
 
       {/* ── Estado + Ações ──────────────────────────────── */}
