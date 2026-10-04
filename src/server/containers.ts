@@ -260,14 +260,29 @@ export async function ensureContainer(cmd: string, opts: RunOptions): Promise<st
     }
     throw lastErr
   }
-  const args = ['run', '-d', '--name', opts.name, ...(opts.runArgs ?? [])]
-  for (const p of opts.ports) args.push('-p', p)
-  for (const v of opts.volumes ?? []) args.push('-v', v)
-  for (const [k, v] of Object.entries(opts.env ?? {})) args.push('-e', `${k}=${v}`)
-  args.push(opts.image, ...(opts.args ?? []))
-  // A primeira vez faz pull da imagem (pode demorar minutos)
-  const id = (await run(cmd, args, 900_000)).trim()
-  return `${opts.name} created from ${opts.image} (${id.slice(0, 12)})`
+  // Monta o `run -d`; runArgs (ex.: --userns=keep-id) só se incluem quando pedido.
+  const build = (withRunArgs: boolean): string[] => {
+    const a = ['run', '-d', '--name', opts.name, ...(withRunArgs ? (opts.runArgs ?? []) : [])]
+    for (const p of opts.ports) a.push('-p', p)
+    for (const v of opts.volumes ?? []) a.push('-v', v)
+    for (const [k, v] of Object.entries(opts.env ?? {})) a.push('-e', `${k}=${v}`)
+    a.push(opts.image, ...(opts.args ?? []))
+    return a
+  }
+  // A primeira vez faz pull da imagem (pode demorar minutos).
+  try {
+    const id = (await run(cmd, build(true), 900_000)).trim()
+    return `${opts.name} created from ${opts.image} (${id.slice(0, 12)})`
+  } catch (e) {
+    // --userns=keep-id só funciona em podman rootless recente. Noutros motores (docker,
+    // podman rootful/antigo) recria-se sem essa flag em vez de falhar (portabilidade).
+    if (opts.runArgs?.length && /userns|keep-id|rootless|unknown flag|unsupported|invalid argument/i.test(String(e))) {
+      await run(cmd, ['rm', '-f', opts.name], 30_000).catch(() => undefined)
+      const id = (await run(cmd, build(false), 900_000)).trim()
+      return `${opts.name} created from ${opts.image} (${id.slice(0, 12)}) — sem ${opts.runArgs.join(' ')}`
+    }
+    throw e
+  }
 }
 
 export async function containerState(cmd: string, name: string): Promise<{ exists: boolean; running: boolean }> {

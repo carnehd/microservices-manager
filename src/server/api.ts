@@ -218,8 +218,8 @@ async function startKeycloak(recreate = false): Promise<ProcState> {
       KEYCLOAK_ADMIN: kc.adminUser, KEYCLOAK_ADMIN_PASSWORD: kc.adminPassword,
       KC_BOOTSTRAP_ADMIN_USERNAME: kc.adminUser, KC_BOOTSTRAP_ADMIN_PASSWORD: kc.adminPassword,
       // Para SPIs que falam com o emulador Pub/Sub (ex. keycloak-pubsub-login-spi): do container
-      // o emulador (publicado no host) alcança-se por host.containers.internal:<porta-host>.
-      PUBSUB_EMULATOR_HOST: `host.containers.internal:${ps.port}`,
+      // o emulador (publicado no host) alcança-se pelo alias do host (podman: host.containers.internal; docker: host.docker.internal).
+      PUBSUB_EMULATOR_HOST: `${/docker/i.test(containerCmd()) ? 'host.docker.internal' : 'host.containers.internal'}:${ps.port}`,
       PUBSUB_PROJECT_ID: ps.projectId,
       PUBSUB_LOGIN_TOPIC: 'login-events'
     },
