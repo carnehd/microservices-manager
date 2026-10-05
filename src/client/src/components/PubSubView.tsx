@@ -45,6 +45,8 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const [busy, setBusy] = useState<string | null>(null)
   const [port, setPort] = useState(String(settings.pubsub.port))
   const [projectId, setProjectId] = useState(settings.pubsub.projectId)
+  const [image, setImage] = useState(settings.pubsub.image)
+  const [containerName, setContainerName] = useState(settings.pubsub.containerName)
   const [newTopic, setNewTopic] = useState('')
   const [newSub, setNewSub] = useState('')
   const [newSubTopic, setNewSubTopic] = useState('')
@@ -214,9 +216,13 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
       notify('Invalid port', 'error')
       return
     }
+    if (!image.trim() || !/^[\w.-]+$/.test(containerName.trim())) {
+      notify('Invalid image or container name', 'error')
+      return
+    }
     setBusy('save')
     try {
-      await onSaveSettings({ pubsub: { ...settings.pubsub, port: p, projectId: projectId.trim() || 'local-project' } })
+      await onSaveSettings({ pubsub: { ...settings.pubsub, port: p, projectId: projectId.trim() || 'local-project', image: image.trim(), containerName: containerName.trim() } })
       notify('Pub/Sub settings saved', 'success')
       await loadInfo()
     } catch (e) {
@@ -306,8 +312,11 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
           <div className="pubsub-settings">
             <label className="field field-sm"><span>Port (host)</span><input className="input" value={port} onChange={(e) => setPort(e.target.value)} /></label>
             <label className="field"><span>Project ID</span><input className="input mono" value={projectId} onChange={(e) => setProjectId(e.target.value)} /></label>
+            <label className="field grow"><span>Image</span><input className="input mono" value={image} onChange={(e) => setImage(e.target.value)} title="Imagem do emulador. Podes trocar por uma alternativa (ex. no Docker Hub) se o gcr.io estiver bloqueado." /></label>
+            <label className="field"><span>Container name</span><input className="input mono" value={containerName} onChange={(e) => setContainerName(e.target.value)} /></label>
             <button className="btn btn-sm" disabled={busy !== null} onClick={() => void saveSettings()}>Save</button>
           </div>
+          <p className="muted small">Mudar a imagem/porta/container só tem efeito num container novo — faz <b>Stop</b> e recria.</p>
           <div className="srdb-actions">
             <button className="btn btn-primary" disabled={busy !== null || !info.engineOk || info.running} onClick={() => void startEmulator()}>
               {busy === 'start' ? 'Starting…' : info.exists ? '▶ Start' : '▶ Create and start'}
