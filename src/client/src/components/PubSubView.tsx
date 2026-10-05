@@ -47,6 +47,9 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const [projectId, setProjectId] = useState(settings.pubsub.projectId)
   const [image, setImage] = useState(settings.pubsub.image)
   const [containerName, setContainerName] = useState(settings.pubsub.containerName)
+  // Projeto ativo para gerir/ver (o emulador hospeda vários). Opções = o das definições + os detetados.
+  const [project, setProject] = useState(settings.pubsub.projectId)
+  const projectOptions = [...new Set([settings.pubsub.projectId, project, ...(scan?.services ?? []).map((s) => s.pubsub?.projectId).filter((x): x is string => !!x)])]
   const [newTopic, setNewTopic] = useState('')
   const [newSub, setNewSub] = useState('')
   const [newSubTopic, setNewSubTopic] = useState('')
@@ -94,13 +97,15 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   // Cria no emulador os tópicos/subscrições detetados num microserviço.
   const createDetected = async (svcName: string, d: PubsubDetected) => {
     setBusy('detected:' + svcName)
+    const proj = d.projectId || project // cria no projeto do microserviço
     try {
       const wanted = new Set<string>(d.topics)
       for (const s of d.subscriptions) wanted.add(s.topic || topicForSub(s.name))
-      for (const t of wanted) { try { await api.pubsub.createTopic(t) } catch { /* já existe */ } }
-      for (const s of d.subscriptions) { try { await api.pubsub.createSubscription(s.name, s.topic || topicForSub(s.name)) } catch { /* já existe */ } }
-      notify(`Created ${wanted.size} topic(s) and ${d.subscriptions.length} subscription(s) from ${svcName}`, 'success')
-      await loadEntities()
+      for (const t of wanted) { try { await api.pubsub.createTopic(t, proj) } catch { /* já existe */ } }
+      for (const s of d.subscriptions) { try { await api.pubsub.createSubscription(s.name, s.topic || topicForSub(s.name), proj) } catch { /* já existe */ } }
+      notify(`Created ${wanted.size} topic(s) and ${d.subscriptions.length} subscription(s) from ${svcName} in project ${proj}`, 'success')
+      if (proj !== project) setProject(proj) // passa a ver o projeto do serviço
+      else await loadEntities()
     } catch (e) {
       fail(e)
     } finally {
@@ -111,7 +116,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const openInbox = async (sub: string) => {
     setBusy('inbox:' + sub)
     try {
-      setInbox({ sub, data: await api.pubsub.poll(sub) })
+      setInbox({ sub, data: await api.pubsub.poll(sub, 50, project) })
     } catch (e) {
       fail(e)
     } finally {
@@ -121,7 +126,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const refreshInbox = async () => {
     if (!inbox) return
     try {
-      setInbox({ sub: inbox.sub, data: await api.pubsub.poll(inbox.sub) })
+      setInbox({ sub: inbox.sub, data: await api.pubsub.poll(inbox.sub, 50, project) })
     } catch (e) {
       fail(e)
     }
@@ -129,7 +134,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const markRead = async (id?: string) => {
     if (!inbox) return
     try {
-      setInbox({ sub: inbox.sub, data: await api.pubsub.markRead(inbox.sub, id) })
+      setInbox({ sub: inbox.sub, data: await api.pubsub.markRead(inbox.sub, id, project) })
     } catch (e) {
       fail(e)
     }
@@ -137,7 +142,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const clearBox = async () => {
     if (!inbox || !window.confirm('Clear the message history for this subscription?')) return
     try {
-      setInbox({ sub: inbox.sub, data: await api.pubsub.clearInbox(inbox.sub) })
+      setInbox({ sub: inbox.sub, data: await api.pubsub.clearInbox(inbox.sub, project) })
     } catch (e) {
       fail(e)
     }
@@ -149,7 +154,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
     }
     setBusy('publish')
     try {
-      const r = await api.pubsub.publish(pubTopic, pubData)
+      const r = await api.pubsub.publish(pubTopic, pubData, undefined, project)
       notify(`Message published to ${pubTopic}${r.messageId ? ` (#${r.messageId})` : ''}`, 'success')
       if (inbox) await refreshInbox()
     } catch (e) {
@@ -176,14 +181,14 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
 
   const loadEntities = useCallback(async () => {
     try {
-      const [t, s] = await Promise.all([api.pubsub.topics(), api.pubsub.subscriptions()])
+      const [t, s] = await Promise.all([api.pubsub.topics(project), api.pubsub.subscriptions(project)])
       setTopics(t)
       setSubs(s)
     } catch {
       setTopics([])
       setSubs([])
     }
-  }, [])
+  }, [project])
 
   useEffect(() => {
     void loadInfo()
@@ -195,6 +200,8 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   useEffect(() => {
     setPubTopic((cur) => (cur && topics.some((t) => t.name === cur) ? cur : topics[0]?.name ?? ''))
   }, [topics])
+  // Mudar de projeto limpa a inbox aberta (é de outro projeto).
+  useEffect(() => { setInbox(null) }, [project])
 
   const run = async (key: string, fn: () => Promise<unknown>, after?: () => Promise<unknown> | void) => {
     setBusy(key)
@@ -317,6 +324,13 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
             <button className="btn btn-sm" disabled={busy !== null} onClick={() => void saveSettings()}>Save</button>
           </div>
           <p className="muted small">Mudar a imagem/porta/container só tem efeito num container novo — faz <b>Stop</b> e recria.</p>
+          <div className="pubsub-settings">
+            <label className="field grow"><span>Managing project (o emulador hospeda vários)</span>
+              <select className="input mono" value={project} onChange={(e) => setProject(e.target.value)} title="Projeto cujos tópicos/subscrições/mensagens estás a ver e a gerir">
+                {projectOptions.map((p) => <option key={p} value={p}>{p}{p === settings.pubsub.projectId ? ' (default)' : ''}</option>)}
+              </select>
+            </label>
+          </div>
           <div className="srdb-actions">
             <button className="btn btn-primary" disabled={busy !== null || !info.engineOk || info.running} onClick={() => void startEmulator()}>
               {busy === 'start' ? 'Starting…' : info.exists ? '▶ Start' : '▶ Create and start'}
@@ -388,13 +402,13 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
             <>
               <div className="pubsub-form">
                 <input className="input mono" placeholder="topic-name" value={newTopic} onChange={(e) => setNewTopic(e.target.value)} />
-                <button className="btn btn-sm btn-primary" disabled={busy !== null || !newTopic.trim()} onClick={() => void run('topic', () => api.pubsub.createTopic(newTopic.trim()), () => { setNewTopic(''); return loadEntities() })}>Create</button>
+                <button className="btn btn-sm btn-primary" disabled={busy !== null || !newTopic.trim()} onClick={() => void run('topic', () => api.pubsub.createTopic(newTopic.trim(), project), () => { setNewTopic(''); return loadEntities() })}>Create</button>
               </div>
               <ul className="pubsub-list">
                 {topics.map((t) => (
                   <li key={t.name}>
                     <span className="mono">{t.name}</span>
-                    <button className="btn btn-sm btn-ghost" title="Delete" onClick={() => void run('deltopic', () => api.pubsub.deleteTopic(t.name), loadEntities)}>✕</button>
+                    <button className="btn btn-sm btn-ghost" title="Delete" onClick={() => void run('deltopic', () => api.pubsub.deleteTopic(t.name, project), loadEntities)}>✕</button>
                   </li>
                 ))}
                 {!topics.length && <li className="muted small">(no topics)</li>}
@@ -414,7 +428,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
                   <option value="">topic…</option>
                   {topics.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
                 </select>
-                <button className="btn btn-sm btn-primary" disabled={busy !== null || !newSub.trim() || !newSubTopic} onClick={() => void run('sub', () => api.pubsub.createSubscription(newSub.trim(), newSubTopic), () => { setNewSub(''); return loadEntities() })}>Create</button>
+                <button className="btn btn-sm btn-primary" disabled={busy !== null || !newSub.trim() || !newSubTopic} onClick={() => void run('sub', () => api.pubsub.createSubscription(newSub.trim(), newSubTopic, project), () => { setNewSub(''); return loadEntities() })}>Create</button>
               </div>
               <ul className="pubsub-list">
                 {subs.map((s) => (
@@ -424,7 +438,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
                     <button className="btn btn-sm" disabled={busy !== null} title="Consult the message history for this subscription" onClick={() => void openInbox(s.name)}>
                       {busy === 'inbox:' + s.name ? 'opening…' : 'view messages'}
                     </button>
-                    <button className="btn btn-sm btn-ghost" title="Delete" onClick={() => void run('delsub', () => api.pubsub.deleteSubscription(s.name), loadEntities)}>✕</button>
+                    <button className="btn btn-sm btn-ghost" title="Delete" onClick={() => void run('delsub', () => api.pubsub.deleteSubscription(s.name, project), loadEntities)}>✕</button>
                   </li>
                 ))}
                 {!subs.length && <li className="muted small">(no subscriptions)</li>}
