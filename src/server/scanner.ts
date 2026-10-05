@@ -77,6 +77,44 @@ function detectPubsub(config: Record<string, string>): import('../shared/types')
   return { projectId, topics: [...topics], subscriptions: [...subs].map((name) => ({ name })) }
 }
 
+/**
+ * Lê o docker-compose à procura da config de Pub/Sub: project id (env PUBSUB_PROJECT_ID),
+ * e tópicos/subscrições criados por chamadas REST ao emulador (ex. serviço "pubsub-setup"
+ * com curl PUT .../topics/<t> e .../subscriptions/<s> com {"topic": ".../topics/<t>"}).
+ */
+async function readComposePubsub(dir: string): Promise<import('../shared/types').PubsubDetected | null> {
+  const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  for (const name of ['docker-compose.yaml', 'docker-compose.yml', 'compose.yaml', 'compose.yml']) {
+    const p = join(dir, name)
+    if (!existsSync(p)) continue
+    try {
+      const text = await fs.readFile(p, 'utf8')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const services = (parseAllDocuments(text)[0]?.toJS() as any)?.services ?? {}
+      let projectId: string | undefined
+      const subMap = new Map<string, string | undefined>()
+      for (const k of Object.keys(services)) {
+        const env = normalizeComposeEnv(services[k]?.environment)
+        if (!projectId && env.PUBSUB_PROJECT_ID) projectId = env.PUBSUB_PROJECT_ID
+        for (const [ek, ev] of Object.entries(env)) if (/^(subscricao|subscription|sub)[_-]/i.test(ek) && ev) subMap.set(ev, undefined)
+      }
+      const topics = new Set<string>()
+      for (const m of text.matchAll(/\/topics\/([A-Za-z][\w.~%+-]*)/g)) topics.add(m[1])
+      for (const m of text.matchAll(/\/subscriptions\/([A-Za-z][\w.~%+-]*)/g)) if (!subMap.has(m[1])) subMap.set(m[1], undefined)
+      // sub → topic a partir do corpo do pedido (subscriptions/<s> … topics/<t>)
+      for (const sub of subMap.keys()) {
+        const mm = new RegExp(`subscriptions/${esc(sub)}[\\s\\S]{0,500}?topics/([A-Za-z][\\w.~%+-]*)`).exec(text)
+        if (mm) subMap.set(sub, mm[1])
+      }
+      if (!projectId && !topics.size && !subMap.size) continue
+      return { projectId, topics: [...topics], subscriptions: [...subMap].map(([name, topic]) => ({ name, topic })) }
+    } catch {
+      /* compose inválido: ignora */
+    }
+  }
+  return null
+}
+
 /** Extrai o nome da base de uma jdbc url (…/<db>?params). */
 function dbNameFromJdbc(url?: string): string | undefined {
   if (!url) return undefined
@@ -348,7 +386,22 @@ async function analyzeProject(dir: string, root: string): Promise<{ leaf?: Servi
     }
     if (ds.url || ds.username || ds.driver) info.datasource = ds
 
-    info.pubsub = detectPubsub(config) // project id / tópicos / subscrições para o emulador local
+    // Pub/Sub: junta o detetado na config (application.yaml) com o do docker-compose (pubsub-setup).
+    const cfgPs = detectPubsub(config)
+    const composePs = await readComposePubsub(dir)
+    if (cfgPs || composePs) {
+      const topics = new Set<string>([...(cfgPs?.topics ?? []), ...(composePs?.topics ?? [])])
+      const subMap = new Map<string, string | undefined>()
+      for (const s of [...(cfgPs?.subscriptions ?? []), ...(composePs?.subscriptions ?? [])]) {
+        subMap.set(s.name, s.topic || subMap.get(s.name)) // o compose tem o tópico certo
+      }
+      for (const s of subMap.values()) if (s) topics.add(s)
+      info.pubsub = {
+        projectId: composePs?.projectId ?? cfgPs?.projectId,
+        topics: [...topics],
+        subscriptions: [...subMap].map(([name, topic]) => ({ name, topic }))
+      }
+    }
 
     // Microserviço "SR": database/schema próprios + tabelas geridas por Liquibase.
     // A config da BD vem por env vars (docker-compose) ou dos defaults dos placeholders em application.yaml.
