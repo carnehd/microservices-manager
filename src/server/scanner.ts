@@ -48,6 +48,35 @@ function placeholderDefault(v?: string): string | undefined {
   return m ? m[1] : v
 }
 
+/**
+ * Deteta Pub/Sub na configuração (genérico): project id, tópicos e subscrições.
+ * Usa os valores por omissão dos placeholders ${VAR:default}.
+ */
+function detectPubsub(config: Record<string, string>): import('../shared/types').PubsubDetected | undefined {
+  const NAME = /^[A-Za-z][\w.~%+-]{2,254}$/
+  const resolve = (v?: string): string | undefined => {
+    const d = placeholderDefault(v)
+    return d && !/\$\{/.test(d) ? d.trim() : undefined
+  }
+  let projectId: string | undefined
+  const topics = new Set<string>()
+  const subs = new Set<string>()
+  for (const [k, v] of Object.entries(config)) {
+    const path = k.toLowerCase()
+    if (!/pubsub|gcp|pub-sub/.test(path)) continue // só secções de pub/sub
+    const leaf = path.split('.').pop() ?? ''
+    if (!projectId && /^project[-_]?id$/.test(leaf)) { projectId = resolve(v); continue }
+    const val = resolve(v)
+    if (!val || !NAME.test(val)) continue
+    const isTopic = /^(topic|topico|topic[-_]?id|topicname)$/.test(leaf) || (/topico|topic/.test(path) && /^(nome|name|id)$/.test(leaf))
+    const isSub = /subscri/.test(path) && /^(nome|name|id|subscription|subscricao|subscrição)$/.test(leaf)
+    if (isTopic) topics.add(val)
+    else if (isSub) subs.add(val)
+  }
+  if (!projectId && !topics.size && !subs.size) return undefined
+  return { projectId, topics: [...topics], subscriptions: [...subs].map((name) => ({ name })) }
+}
+
 /** Extrai o nome da base de uma jdbc url (…/<db>?params). */
 function dbNameFromJdbc(url?: string): string | undefined {
   if (!url) return undefined
@@ -318,6 +347,8 @@ async function analyzeProject(dir: string, root: string): Promise<{ leaf?: Servi
       driver: config['spring.datasource.driver-class-name']
     }
     if (ds.url || ds.username || ds.driver) info.datasource = ds
+
+    info.pubsub = detectPubsub(config) // project id / tópicos / subscrições para o emulador local
 
     // Microserviço "SR": database/schema próprios + tabelas geridas por Liquibase.
     // A config da BD vem por env vars (docker-compose) ou dos defaults dos placeholders em application.yaml.

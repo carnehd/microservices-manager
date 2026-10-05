@@ -100,6 +100,15 @@ export interface ServiceInfo {
   refEndpoints?: Array<{ host: string; port: number }>
   /** IDs de outros serviços que este consome, inferidos dos URLs da configuração */
   dependsOn?: string[]
+  /** Config de Pub/Sub detetada (project id, tópicos, subscrições) para criar no emulador local */
+  pubsub?: PubsubDetected
+}
+
+/** Pub/Sub detetado na configuração de um microserviço */
+export interface PubsubDetected {
+  projectId?: string
+  topics: string[]
+  subscriptions: Array<{ name: string; topic?: string }>
 }
 
 export interface DepGraph {

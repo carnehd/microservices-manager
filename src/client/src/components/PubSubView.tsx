@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AppSettings, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic } from '../../../shared/types'
+import type { AppSettings, PubsubDetected, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult } from '../../../shared/types'
 import { api } from '../api'
+
+// Tópico inferido para uma subscrição sem tópico explícito (tira sufixos -sub/-subscription/-dev…).
+function topicForSub(name: string): string {
+  return name.replace(/[-_]sub(scription)?([-_]\w+)?$/i, '') || name
+}
 
 function prettyJson(s: string): string {
   try {
@@ -31,8 +36,8 @@ function Field({ label, value, notify }: { label: string; value: string; notify:
   )
 }
 
-export function PubSubView({ settings, onSaveSettings, notify, fail }: {
-  settings: AppSettings; onSaveSettings: SaveSettings; notify: Notify; fail: (e: unknown) => void
+export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
+  settings: AppSettings; scan: ScanResult | null; onSaveSettings: SaveSettings; notify: Notify; fail: (e: unknown) => void
 }) {
   const [info, setInfo] = useState<PubSubInfo | null>(null)
   const [topics, setTopics] = useState<PubSubTopic[]>([])
@@ -82,6 +87,23 @@ export function PubSubView({ settings, onSaveSettings, notify, fail }: {
       const r = await api.containers.exec(['logs', '--tail', '120', name])
       appendLog(`--- ${name} logs (${new Date().toLocaleTimeString()}) ---\n` + [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n'))
     } catch (e) { appendLog(`✗ ${e instanceof Error ? e.message : String(e)}`) }
+  }
+
+  // Cria no emulador os tópicos/subscrições detetados num microserviço.
+  const createDetected = async (svcName: string, d: PubsubDetected) => {
+    setBusy('detected:' + svcName)
+    try {
+      const wanted = new Set<string>(d.topics)
+      for (const s of d.subscriptions) wanted.add(s.topic || topicForSub(s.name))
+      for (const t of wanted) { try { await api.pubsub.createTopic(t) } catch { /* já existe */ } }
+      for (const s of d.subscriptions) { try { await api.pubsub.createSubscription(s.name, s.topic || topicForSub(s.name)) } catch { /* já existe */ } }
+      notify(`Created ${wanted.size} topic(s) and ${d.subscriptions.length} subscription(s) from ${svcName}`, 'success')
+      await loadEntities()
+    } catch (e) {
+      fail(e)
+    } finally {
+      setBusy(null)
+    }
   }
 
   const openInbox = async (sub: string) => {
@@ -320,6 +342,35 @@ export function PubSubView({ settings, onSaveSettings, notify, fail }: {
             </>
           )}
         </div>
+
+        {(() => {
+          const detected = (scan?.services ?? []).filter((s) => s.pubsub && (s.pubsub.topics.length || s.pubsub.subscriptions.length || s.pubsub.projectId))
+          if (!detected.length) return null
+          return (
+            <div className="srdb-card">
+              <h3>Detected in microservices <span className="count">{detected.length}</span></h3>
+              <p className="muted small">Pub/Sub config read from the services' application.yaml — create the topics/subscriptions in the local emulator.</p>
+              {detected.map((s) => {
+                const d = s.pubsub!
+                const topicsToCreate = [...new Set<string>([...d.topics, ...d.subscriptions.map((x) => x.topic || topicForSub(x.name))])]
+                return (
+                  <div key={s.id} className="pubsub-detected">
+                    <div className="row">
+                      <b className="mono small">{s.name}</b>
+                      {d.projectId && <span className="muted small">· project {d.projectId}</span>}
+                      <span className="grow" />
+                      <button className="btn btn-sm btn-primary" disabled={!info.running || busy !== null} title={info.running ? 'Create these topics/subscriptions in the emulator' : 'Start the emulator first'} onClick={() => void createDetected(s.name, d)}>
+                        {busy === 'detected:' + s.name ? 'Creating…' : '⇪ Create in emulator'}
+                      </button>
+                    </div>
+                    {topicsToCreate.length > 0 && <div className="small mono muted">topics: {topicsToCreate.join(', ')}</div>}
+                    {d.subscriptions.length > 0 && <div className="small mono muted">subs: {d.subscriptions.map((x) => `${x.name} → ${x.topic || topicForSub(x.name)}`).join(', ')}</div>}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
 
         <div className="srdb-card">
           <h3>Create topics <span className="count">{topics.length}</span></h3>

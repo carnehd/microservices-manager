@@ -134,6 +134,8 @@ p { margin: 0 0 8px; }
 .navdot-error { background: var(--red); box-shadow: 0 0 6px rgba(239, 91, 91, .5); }
 .navdot-none { background: transparent; border: 1px solid #555c66; box-shadow: none; }
 .console-out { margin: 0 16px 16px; max-height: calc(100vh - 320px); overflow: auto; white-space: pre-wrap; }
+.pubsub-detected { border-top: 1px solid var(--border); padding: 6px 0; display: flex; flex-direction: column; gap: 2px; }
+.pubsub-detected .mono { word-break: break-all; }
 .srdb-top { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 12px; }
 .srdb-top .srdb-card { flex: 1 1 340px; min-width: 300px; margin-bottom: 0; }
 .srdb-help { background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 15px; padding: 0 4px; line-height: 1; }
