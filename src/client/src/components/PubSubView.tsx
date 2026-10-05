@@ -47,6 +47,42 @@ export function PubSubView({ settings, onSaveSettings, notify, fail }: {
   const [pubTopic, setPubTopic] = useState('')
   const [pubData, setPubData] = useState('{\n  "referencia": "TEST-001",\n  "descricao": "test message",\n  "estado": "NOVA"\n}')
   const [cfgOpen, setCfgOpen] = useState(false)
+  const [emuLog, setEmuLog] = useState('')
+  const appendLog = (t: string) => setEmuLog((p) => (p ? p + '\n' : '') + t)
+
+  // Arranca/cria o emulador mostrando o comando, o resultado e os logs do container.
+  const startEmulator = async () => {
+    setBusy('start')
+    const name = info?.containerName ?? 'msm-pubsub'
+    appendLog(`$ ${info?.image ? `podman run -d --name ${name} -p ${info.port}:8085 ${info.image} gcloud beta emulators pubsub start --host-port=0.0.0.0:8085 --project=${info.projectId}` : `start ${name}`}`)
+    try {
+      const msg = await api.pubsub.start()
+      appendLog(msg)
+      await loadInfo()
+      await loadEntities()
+      // logs do container (startup do emulador) — espera um pouco e vai buscar
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 700))
+        try {
+          const r = await api.containers.exec(['logs', '--tail', '80', name])
+          const out = [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n')
+          if (out) { appendLog('--- container logs ---\n' + out); break }
+        } catch { /* ainda não há logs */ }
+      }
+    } catch (e) {
+      appendLog(`✗ ${e instanceof Error ? e.message : String(e)}`)
+      fail(e)
+    } finally {
+      setBusy(null)
+    }
+  }
+  const refreshEmuLogs = async () => {
+    const name = info?.containerName ?? 'msm-pubsub'
+    try {
+      const r = await api.containers.exec(['logs', '--tail', '120', name])
+      appendLog(`--- ${name} logs (${new Date().toLocaleTimeString()}) ---\n` + [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n'))
+    } catch (e) { appendLog(`✗ ${e instanceof Error ? e.message : String(e)}`) }
+  }
 
   const openInbox = async (sub: string) => {
     setBusy('inbox:' + sub)
@@ -251,13 +287,20 @@ export function PubSubView({ settings, onSaveSettings, notify, fail }: {
             <button className="btn btn-sm" disabled={busy !== null} onClick={() => void saveSettings()}>Save</button>
           </div>
           <div className="srdb-actions">
-            <button className="btn btn-primary" disabled={busy !== null || !info.engineOk || info.running} onClick={() => void run('start', api.pubsub.start, loadEntities)}>
+            <button className="btn btn-primary" disabled={busy !== null || !info.engineOk || info.running} onClick={() => void startEmulator()}>
               {busy === 'start' ? 'Starting…' : info.exists ? '▶ Start' : '▶ Create and start'}
             </button>
             <button className="btn btn-danger" disabled={busy !== null || !info.running} onClick={() => void run('stop', api.pubsub.stop)}>■ Stop</button>
             <button className="btn" disabled={busy !== null} onClick={() => { void loadInfo(); if (info.running) void loadEntities() }}>⟳ Check</button>
           </div>
           {!info.engineOk && <p className="muted small">Container engine unavailable{info.error ? `: ${info.error}` : ''}.</p>}
+          <div className="row" style={{ marginTop: 8 }}>
+            <h4 style={{ margin: 0 }}>Container logs</h4>
+            <span className="grow" />
+            <button className="btn btn-sm" disabled={busy !== null || !info.exists} onClick={() => void refreshEmuLogs()}>⟳ logs</button>
+            <button className="btn btn-sm btn-ghost" disabled={!emuLog} onClick={() => setEmuLog('')}>clear</button>
+          </div>
+          <pre className="resp-body console-out" style={{ margin: 0, maxHeight: 220 }}>{emuLog || '(creating/starting the emulator shows here what happens — the podman command, the result and the container logs)'}</pre>
         </div>
 
         <div className="srdb-card">

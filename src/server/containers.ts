@@ -42,7 +42,7 @@ async function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<str
 }
 
 // Subcomandos de leitura/diagnóstico permitidos na consola da página Containers (sem destruir nada).
-const EXEC_ALLOWED = new Set(['machine', 'info', 'version', 'ps', 'images', 'image', 'stats', 'system', 'volume', 'network', 'port', 'top', 'inspect', 'healthcheck', 'df'])
+const EXEC_ALLOWED = new Set(['machine', 'info', 'version', 'ps', 'images', 'image', 'stats', 'system', 'volume', 'network', 'port', 'top', 'inspect', 'healthcheck', 'df', 'logs'])
 const EXEC_ARG_RE = /^[\w.@:/=+,%-]+$/
 
 /** Corre um comando de leitura do motor (consola): devolve stdout/stderr/código, sem lançar em erro de execução. */
