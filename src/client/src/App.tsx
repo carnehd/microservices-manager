@@ -14,6 +14,7 @@ import { ServiceView } from './components/ServiceView'
 import { SettingsView } from './components/SettingsView'
 import { Sidebar } from './components/Sidebar'
 import { Toast, type ToastMsg } from './components/Toast'
+import { Terminal } from './components/Terminal'
 import { FolderPicker } from './components/FolderPicker'
 import { NavDot, type NavState, isActive } from './components/common'
 
@@ -124,7 +125,7 @@ export default function App() {
   useEffect(() => {
     let alive = true
     const tick = async (): Promise<void> => {
-      const [kc, cts, rd, ps] = await Promise.allSettled([api.kcInfo(), api.containers.list(), api.redis.info(), api.pubsub.info()])
+      const [kc, cts, rd, ps] = await Promise.allSettled([api.kcInfo(true), api.containers.list(true), api.redis.info(true), api.pubsub.info(true)])
       if (!alive) return
       const keycloak: NavState = kc.status === 'fulfilled' ? (kc.value.container?.running ? 'running' : kc.value.engineError ? 'error' : 'none') : 'error'
       const containers: NavState = cts.status === 'fulfilled' ? (cts.value.some((c) => c.state === 'running') ? 'running' : 'none') : 'error'
@@ -299,6 +300,8 @@ export default function App() {
         {view === 'diagnostics' && <DiagnosticsView fail={fail} notify={notify} />}
         {view === 'settings' && <SettingsView settings={settings} scan={scan} onSave={saveSettings} onRescan={() => rescan()} pickFolder={pickFolder} notify={notify} />}
       </div>
+
+      <Terminal />
 
       <Toast msg={toast} onClose={closeToast} />
       {picker && (

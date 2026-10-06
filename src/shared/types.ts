@@ -562,6 +562,14 @@ export interface PubSubSettings {
   projectId: string
 }
 
+/** Entrada da consola comum (comandos de container corridos pela app). */
+export interface CmdLogEntry {
+  seq: number
+  time: number
+  text: string
+  kind: 'cmd' | 'ok' | 'err'
+}
+
 export interface PubSubInfo {
   engineOk: boolean
   containerName: string

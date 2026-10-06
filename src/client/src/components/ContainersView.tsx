@@ -85,8 +85,9 @@ export function ContainersView({
 
   const refresh = useCallback(async (quiet = false) => {
     try {
-      if (tab === 'images') setImages(await api.containers.images())
-      else setContainers(await api.containers.list())
+      // quiet = refresh periódico (fundo): não aparece na consola comum
+      if (tab === 'images') setImages(await api.containers.images(quiet))
+      else setContainers(await api.containers.list(quiet))
       setError(null)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)

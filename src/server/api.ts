@@ -3,6 +3,7 @@ import { promises as fs, readdirSync, statSync } from 'fs'
 import { basename, delimiter, join } from 'path'
 import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type SrDbInfo, type StartMode } from '../shared/types'
 import { addSseClient, broadcast } from './events'
+import { recentCmds, withSilent } from './cmdlog'
 import { listDirs, openPath, openTerminal } from './fsapi'
 import { searchInServices } from './search'
 import { containerAction, containerState, engineInfo, ensureContainer, execContainerCommand, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
@@ -375,13 +376,17 @@ async function createRealm(r: KcNewRealm): Promise<void> {
 
 type Handler = (req: Request, res: Response) => unknown
 /** Handlers devolvem o valor a enviar como JSON; erros viram 400 {error}. */
-const h = (fn: Handler) => async (req: Request, res: Response): Promise<void> => {
-  try {
-    const out = await fn(req, res)
-    if (!res.headersSent) res.json(out ?? null)
-  } catch (e) {
-    if (!res.headersSent) res.status(400).json({ error: e instanceof Error ? e.message : String(e) })
+const h = (fn: Handler) => (req: Request, res: Response): Promise<void> => {
+  const invoke = async (): Promise<void> => {
+    try {
+      const out = await fn(req, res)
+      if (!res.headersSent) res.json(out ?? null)
+    } catch (e) {
+      if (!res.headersSent) res.status(400).json({ error: e instanceof Error ? e.message : String(e) })
+    }
   }
+  // Pedidos de fundo (pollers de estado) correm em silêncio: não registam comandos na consola comum.
+  return req.get('x-msm-background') === '1' ? withSilent(invoke) : invoke()
 }
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 // Express 5 tipa params como string | string[]
@@ -390,6 +395,7 @@ const param = (req: Request, name: string): string => str(req.params[name])
 export const apiRouter = Router()
 
 apiRouter.get('/events', (_req, res) => addSseClient(res))
+apiRouter.get('/console/log', h(() => recentCmds()))
 
 apiRouter.get('/settings', h(() => getSettings()))
 apiRouter.put('/settings', h(async (req) => {

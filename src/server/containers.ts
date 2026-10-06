@@ -5,6 +5,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
 import type { ContainerExecResult, ContainerInfo, EngineInfo, ImageInfo, MachineInfo } from '../shared/types'
+import { logCmd } from './cmdlog'
 
 const execFileP = promisify(execFile)
 
@@ -39,14 +40,19 @@ function podmanEnv(): NodeJS.ProcessEnv {
 
 /** Corre o comando e devolve stdout; erros trazem o stderr do podman/docker (mensagens úteis). */
 async function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<string> {
-  cmdTrace.getStore()?.push(`${cmd} ${args.join(' ')}`)
+  const line = `${cmd} ${args.join(' ')}`
+  cmdTrace.getStore()?.push(line)
+  logCmd(line, 'cmd')
+  const t0 = Date.now()
   try {
     const { stdout } = await execFileP(cmd, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, windowsHide: true, env: podmanEnv() })
+    logCmd(`exit 0 · ${Date.now() - t0} ms`, 'ok')
     return stdout
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string }
-    if (err.code === 'ENOENT') throw new Error(`"${cmd}" not found in PATH — install Podman (or set another command in Settings)`)
+    if (err.code === 'ENOENT') { logCmd(`"${cmd}" not found in PATH`, 'err'); throw new Error(`"${cmd}" not found in PATH — install Podman (or set another command in Settings)`) }
     const msg = (err.stderr || err.stdout || err.message || '').trim().split('\n').filter(Boolean).pop() ?? 'unknown error'
+    logCmd(msg, 'err')
     throw new Error(msg)
   }
 }
@@ -62,13 +68,16 @@ export async function execContainerCommand(cmd: string, args: string[]): Promise
   if (!EXEC_ALLOWED.has(clean[0])) throw new Error(`Command "${clean[0]}" is not allowed in the console (read-only commands only)`)
   for (const a of clean) if (!EXEC_ARG_RE.test(a)) throw new Error(`Invalid argument: ${a}`)
   const command = `${cmd} ${clean.join(' ')}`
+  logCmd(command, 'cmd')
   const start = Date.now()
   try {
     const { stdout, stderr } = await execFileP(cmd, clean, { timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, env: podmanEnv() })
+    logCmd(`exit 0 · ${Date.now() - start} ms`, 'ok')
     return { command, stdout, stderr, code: 0, ms: Date.now() - start }
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string; code?: unknown }
-    if (err.code === 'ENOENT') throw new Error(`"${cmd}" not found in PATH — install Podman (or set another command in Settings)`)
+    if (err.code === 'ENOENT') { logCmd(`"${cmd}" not found in PATH`, 'err'); throw new Error(`"${cmd}" not found in PATH — install Podman (or set another command in Settings)`) }
+    logCmd(err.stderr || err.message || 'command failed', 'err')
     return {
       command,
       stdout: err.stdout ?? '',

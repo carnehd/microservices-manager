@@ -1,12 +1,15 @@
 import type {
   AppSettings, ContainerInfo, ContainerExecResult, DeployResult, DirListing, BrunoCollection, DbInfo, DepGraph, DepsInfo, DiagReport, EngineInfo, GrafanaLogLine, GrafanaSettings, GrafanaTestResult, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
-  KeycloakInfo, LogLine, ProcState, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult, SearchResult, SrDbStatus, SrTableData, StartMode
+  KeycloakInfo, LogLine, ProcState, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult, SearchResult, SrDbStatus, SrTableData, StartMode, CmdLogEntry
 } from '../../shared/types'
 
-async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
+async function req<T>(method: string, url: string, body?: unknown, bg = false): Promise<T> {
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (bg) headers['X-MSM-Background'] = '1' // pedido de fundo (poller): não aparece na consola comum
   const res = await fetch(url, {
     method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body === undefined ? undefined : JSON.stringify(body)
   })
   const text = await res.text()
@@ -92,7 +95,7 @@ export const api = {
   deps: (id: string) => req<DepsInfo>('GET', `/api/services/${enc(id)}/deps`),
   depsTree: (id: string) => req<ProcState>('POST', `/api/services/${enc(id)}/deps/tree`),
   redis: {
-    info: () => req<RedisInfo>('GET', '/api/redis/info'),
+    info: (bg = false) => req<RedisInfo>('GET', '/api/redis/info', undefined, bg),
     keys: (pattern: string, cursor = '0', count = 200) => req<RedisScan>('GET', `/api/redis/keys?pattern=${enc(pattern)}&cursor=${enc(cursor)}&count=${count}`),
     get: (key: string) => req<RedisKeyValue>('GET', `/api/redis/key?key=${enc(key)}`),
     set: (key: string, value: string, ttl?: number) => req<void>('PUT', '/api/redis/key', { key, value, ttl }),
@@ -103,9 +106,9 @@ export const api = {
     startContainer: () => req<string>('POST', '/api/redis/container/start')
   },
   containers: {
-    engine: () => req<EngineInfo>('GET', '/api/containers/engine'),
-    list: () => req<ContainerInfo[]>('GET', '/api/containers'),
-    images: () => req<ImageInfo[]>('GET', '/api/containers/images'),
+    engine: (bg = false) => req<EngineInfo>('GET', '/api/containers/engine', undefined, bg),
+    list: (bg = false) => req<ContainerInfo[]>('GET', '/api/containers', undefined, bg),
+    images: (bg = false) => req<ImageInfo[]>('GET', '/api/containers/images', undefined, bg),
     action: (id: string, action: string, force = false) => req<string>('POST', `/api/containers/${enc(id)}/${action}`, { force }),
     logs: (id: string) => req<ProcState>('POST', `/api/containers/${enc(id)}/logs`),
     removeImage: (id: string, force = false) => req<string>('DELETE', `/api/containers/images/${enc(id)}${force ? '?force=1' : ''}`),
@@ -113,7 +116,7 @@ export const api = {
     exec: (args: string[]) => req<ContainerExecResult>('POST', '/api/containers/exec', { args })
   },
   pubsub: {
-    info: () => req<PubSubInfo>('GET', '/api/pubsub/info'),
+    info: (bg = false) => req<PubSubInfo>('GET', '/api/pubsub/info', undefined, bg),
     start: () => req<string>('POST', '/api/pubsub/start'),
     stop: () => req<string>('POST', '/api/pubsub/stop'),
     topics: (project?: string) => req<PubSubTopic[]>('GET', `/api/pubsub/topics${project ? `?project=${enc(project)}` : ''}`),
@@ -141,7 +144,8 @@ export const api = {
   openPath: (p: string) => req<void>('POST', '/api/shell/open-path', { path: p }),
   search: (query: string, extensions: string, caseSensitive: boolean) => req<SearchResult>('POST', '/api/search', { query, extensions, caseSensitive }),
   openTerminal: (p: string) => req<void>('POST', '/api/shell/open-terminal', { path: p }),
-  kcInfo: () => req<KeycloakInfo>('GET', '/api/kc/info'),
+  kcInfo: (bg = false) => req<KeycloakInfo>('GET', '/api/kc/info', undefined, bg),
+  consoleLog: () => req<CmdLogEntry[]>('GET', '/api/console/log'),
   kcStart: () => req<ProcState>('POST', '/api/kc/start'),
   kcStop: () => req<void>('POST', '/api/kc/stop'),
   kcRecreate: () => req<ProcState>('POST', '/api/kc/recreate'),
@@ -170,5 +174,6 @@ export const api = {
   },
   onLog: (cb: (id: string, line: LogLine) => void) => on<{ id: string; line: LogLine }>('proc:log', (d) => cb(d.id, d.line)),
   onState: (cb: (st: ProcState) => void) => on<ProcState>('proc:state', cb),
-  onScanUpdated: (cb: (r: ScanResult) => void) => on<ScanResult>('scan:updated', cb)
+  onScanUpdated: (cb: (r: ScanResult) => void) => on<ScanResult>('scan:updated', cb),
+  onCmdLog: (cb: (e: CmdLogEntry) => void) => on<CmdLogEntry>('cmd:log', cb)
 }

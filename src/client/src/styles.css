@@ -49,6 +49,17 @@ h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing
 p { margin: 0 0 8px; }
 
 .app { display: flex; flex-direction: column; height: 100%; }
+/* Terminal comum (consola de comandos) no fundo de todas as páginas */
+.terminal { flex: 0 0 auto; border-top: 1px solid var(--border); background: var(--bg-2); display: flex; flex-direction: column; min-height: 0; }
+.terminal-bar { display: flex; align-items: center; gap: 8px; padding: 4px 12px; cursor: pointer; user-select: none; }
+.terminal-bar:hover { background: var(--bg-3); }
+.terminal-chevron { width: 12px; color: var(--muted); }
+.terminal-title { font-weight: 600; font-size: 13px; }
+.terminal-peek { color: var(--green); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
+.terminal-body { overflow: auto; padding: 6px 12px 10px; max-height: 32vh; white-space: pre-wrap; background: var(--bg); line-height: 1.5; }
+.terminal-body .term-cmd { color: var(--green); font-weight: 600; }
+.terminal-body .term-ok { color: var(--muted); }
+.terminal-body .term-err { color: var(--red); }
 .loading, .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; height: 100%; color: var(--muted); text-align: center; padding: 24px; }
 .grow { flex: 1; min-width: 0; }
 .muted { color: var(--muted); }

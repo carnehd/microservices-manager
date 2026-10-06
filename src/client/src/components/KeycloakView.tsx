@@ -40,7 +40,7 @@ export function KeycloakView({
   const active = running || isActive(state)
   const adminUrl = `http://localhost:${kc.httpPort}/admin/`
 
-  const refreshInfo = useCallback(() => api.kcInfo().then(setInfo).catch(fail), [fail])
+  const refreshInfo = useCallback((bg = false) => api.kcInfo(bg).then(setInfo).catch(fail), [fail])
   const loadLogs = logs.load
   useEffect(() => {
     void refreshInfo()
@@ -50,7 +50,7 @@ export function KeycloakView({
     if (!active) void refreshInfo() // depois de build/deploy a lista de providers pode ter mudado
   }, [active, refreshInfo])
   useEffect(() => {
-    const t = setInterval(() => void refreshInfo(), 5000)
+    const t = setInterval(() => void refreshInfo(true), 5000)
     return () => clearInterval(t)
   }, [refreshInfo])
 
