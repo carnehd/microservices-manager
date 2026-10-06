@@ -9,16 +9,22 @@ const DEFAULT_EXTS = 'java, yaml, yml, xml, properties, json, sql'
 export function SearchView({ notify, fail }: { notify: Notify; fail: (e: unknown) => void }) {
   const [query, setQuery] = useState('')
   const [exts, setExts] = useState(DEFAULT_EXTS)
+  const [deselected, setDeselected] = useState<Set<string>>(new Set())
   const [caseSensitive, setCaseSensitive] = useState(false)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<SearchResult | null>(null)
   const [ran, setRan] = useState('')
 
+  // Extensões do input → chips; filtra pelas selecionadas (não em `deselected`).
+  const parsedExts = useMemo(() => [...new Set(exts.split(/[,\s]+/).map((e) => e.replace(/^\./, '').toLowerCase()).filter(Boolean))], [exts])
+  const selectedExts = useMemo(() => parsedExts.filter((e) => !deselected.has(e)), [parsedExts, deselected])
+  const toggleExt = (e: string): void => setDeselected((prev) => { const n = new Set(prev); if (n.has(e)) n.delete(e); else n.add(e); return n })
+
   const run = async (): Promise<void> => {
     if (!query.trim()) return
     setBusy(true)
     try {
-      const r = await api.search(query.trim(), exts, caseSensitive)
+      const r = await api.search(query.trim(), selectedExts.join(','), caseSensitive)
       setResult(r)
       setRan(query.trim())
     } catch (e) {
@@ -73,9 +79,19 @@ export function SearchView({ notify, fail }: { notify: Notify; fail: (e: unknown
         <label className="inline grow">File types
           <input className="input mono grow" value={exts} onChange={(e) => setExts(e.target.value)} placeholder="java, yaml, xml, … (vazio = todos)" title="Extensões separadas por vírgula. Vazio = todos os ficheiros de texto." />
         </label>
-        <button className="btn btn-sm" onClick={() => setExts(DEFAULT_EXTS)}>reset</button>
-        <button className="btn btn-sm" onClick={() => setExts('')}>all files</button>
+        <button className="btn btn-sm" onClick={() => { setExts(DEFAULT_EXTS); setDeselected(new Set()) }}>reset</button>
+        <button className="btn btn-sm" onClick={() => { setExts(''); setDeselected(new Set()) }}>all files</button>
       </div>
+      {parsedExts.length > 0 && (
+        <div className="ext-chips">
+          <span className="muted small">Filtrar por tipo:</span>
+          {parsedExts.map((e) => (
+            <button key={e} className={`ext-chip${deselected.has(e) ? ' off' : ' on'}`} onClick={() => toggleExt(e)} title={deselected.has(e) ? `incluir .${e}` : `excluir .${e}`}>.{e}</button>
+          ))}
+          {deselected.size > 0 && <button className="btn btn-sm btn-ghost" onClick={() => setDeselected(new Set())}>todos</button>}
+          <span className="muted small">{selectedExts.length ? `${selectedExts.length} tipo(s)` : 'nenhum selecionado → todos os ficheiros'}</span>
+        </div>
+      )}
 
       <div className="tab-body">
         {!result && <div className="empty">Escreve uma string e carrega em <b>Search</b>.</div>}

@@ -134,6 +134,10 @@ p { margin: 0 0 8px; }
 .navdot-error { background: var(--red); box-shadow: 0 0 6px rgba(239, 91, 91, .5); }
 .navdot-none { background: transparent; border: 1px solid #555c66; box-shadow: none; }
 .console-out { margin: 0 16px 16px; max-height: calc(100vh - 320px); overflow: auto; white-space: pre-wrap; }
+.ext-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 8px; }
+.ext-chip { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-3); color: var(--text); cursor: pointer; }
+.ext-chip.on { border-color: var(--accent); color: var(--accent); }
+.ext-chip.off { opacity: .45; text-decoration: line-through; }
 .search-view .search-svc { margin-bottom: 14px; }
 .search-view .search-file { border: 1px solid var(--border); border-radius: 6px; margin: 6px 0; padding: 6px 8px; background: var(--bg-2); }
 .search-hit { display: flex; gap: 8px; padding: 1px 0; white-space: pre-wrap; word-break: break-word; }
