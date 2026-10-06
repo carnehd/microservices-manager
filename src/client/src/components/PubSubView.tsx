@@ -69,6 +69,8 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const [emuLog, setEmuLog] = useState('')
   const appendLog = (t: string) => setEmuLog((p) => (p ? p + '\n' : '') + t)
   const didStartup = useRef(false)
+  // O emulador responde ao REST? (independente de haver um container local a correr — ex.: emulador remoto/partilhado)
+  const [reachable, setReachable] = useState(false)
   // Criar um container novo (msm-pubsub) ou apontar para um já existente.
   const [mode, setMode] = useState<'new' | 'existing'>('new')
   const [containerList, setContainerList] = useState<ContainerInfo[]>([])
@@ -233,9 +235,11 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
       const [t, s] = await Promise.all([api.pubsub.topics(project), api.pubsub.subscriptions(project)])
       setTopics(t)
       setSubs(s)
+      setReachable(true) // o emulador respondeu (REST ok) — mesmo que não haja container local detetado
     } catch {
       setTopics([])
       setSubs([])
+      setReachable(false)
     }
   }, [project])
 
@@ -268,9 +272,10 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   useEffect(() => {
     if (mode === 'existing') void loadContainers()
   }, [mode, loadContainers])
+  // Tenta sempre falar com o emulador (mesmo sem container local detetado): se responder, dá para gerir.
   useEffect(() => {
-    if (info?.running) void loadEntities()
-  }, [info?.running, loadEntities])
+    if (info) void loadEntities()
+  }, [info, loadEntities])
   // Mantém o tópico escolhido para publicar válido (default = 1º tópico).
   useEffect(() => {
     setPubTopic((cur) => (cur && topics.some((t) => t.name === cur) ? cur : topics[0]?.name ?? ''))
@@ -316,8 +321,10 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
 
   if (!info) return <div className="muted pad">Loading…</div>
 
-  const stateTxt = !info.engineOk ? 'engine unavailable' : info.running ? 'running' : info.exists ? 'stopped' : 'not created'
-  const stateTone = info.running ? 'green' : info.exists ? 'amber' : 'muted'
+  const stateTxt = !info.engineOk ? 'engine unavailable' : info.running ? 'running' : info.exists ? 'stopped' : reachable ? 'reachable' : 'not created'
+  const stateTone = info.running || reachable ? 'green' : info.exists ? 'amber' : 'muted'
+  // Pode gerir (criar tópicos/subscrições, publicar, ver mensagens) se o emulador responde — container local OU remoto/existente.
+  const canManage = info.running || reachable
 
   return (
     <div className="pubsub-view pubsub-split">
@@ -325,8 +332,8 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
       <div className="pubsub-left">
         <div className="srdb-card">
           <h3>Create test message</h3>
-          {!info.running && <div className="muted small">Start the emulator (on the right) to publish.</div>}
-          {info.running && (
+          {!canManage && <div className="muted small">Start the emulator (on the right) to publish.</div>}
+          {canManage && (
             <>
               <div className="pubsub-form">
                 <label className="inline grow">Topic
@@ -352,14 +359,14 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
             <h3 style={{ margin: 0 }}>Messages</h3>
             <span className="grow" />
             <label className="inline">Consult subscription
-              <select className="input mono input-inline" value={inbox?.sub ?? ''} onChange={(e) => { if (e.target.value) void openInbox(e.target.value); else setInbox(null) }} title="Choose the subscription whose messages you want to consult" disabled={!info.running}>
+              <select className="input mono input-inline" value={inbox?.sub ?? ''} onChange={(e) => { if (e.target.value) void openInbox(e.target.value); else setInbox(null) }} title="Choose the subscription whose messages you want to consult" disabled={!canManage}>
                 <option value="">choose a subscription…</option>
                 {subs.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
               </select>
             </label>
           </div>
-          {!info.running && <div className="muted small">Start the emulator to view messages.</div>}
-          {info.running && !inbox && <div className="muted small">Choose a subscription above to consult its messages.</div>}
+          {!canManage && <div className="muted small">Start the emulator to view messages.</div>}
+          {canManage && !inbox && <div className="muted small">Choose a subscription above to consult its messages.</div>}
           {inbox && (
             <>
               <div className="row">
@@ -482,7 +489,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
                       <b className="mono small">{s.name}</b>
                       {d.projectId && <span className="muted small">· project {d.projectId}</span>}
                       <span className="grow" />
-                      <button className="btn btn-sm btn-primary" disabled={!info.running || busy !== null} title={info.running ? 'Create these topics/subscriptions in the emulator' : 'Start the emulator first'} onClick={() => void createDetected(s.name, d)}>
+                      <button className="btn btn-sm btn-primary" disabled={!canManage || busy !== null} title={canManage ? 'Create these topics/subscriptions in the emulator' : 'Start the emulator first'} onClick={() => void createDetected(s.name, d)}>
                         {busy === 'detected:' + s.name ? 'Creating…' : '⇪ Create in emulator'}
                       </button>
                     </div>
@@ -497,8 +504,8 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
 
         <div className="srdb-card">
           <h3>Create topics <span className="count">{topics.length}</span></h3>
-          {!info.running && <div className="muted small">Start the emulator to manage topics.</div>}
-          {info.running && (
+          {!canManage && <div className="muted small">Start the emulator to manage topics.</div>}
+          {canManage && (
             <>
               <div className="pubsub-form">
                 <input className="input mono" placeholder="topic-name" value={newTopic} onChange={(e) => setNewTopic(e.target.value)} />
@@ -519,8 +526,8 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
 
         <div className="srdb-card">
           <h3>Create subscriptions <span className="count">{subs.length}</span></h3>
-          {!info.running && <div className="muted small">Start the emulator to manage subscriptions.</div>}
-          {info.running && (
+          {!canManage && <div className="muted small">Start the emulator to manage subscriptions.</div>}
+          {canManage && (
             <>
               <div className="pubsub-form">
                 <input className="input mono" placeholder="subscription-name" value={newSub} onChange={(e) => setNewSub(e.target.value)} />
