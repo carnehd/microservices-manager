@@ -54,6 +54,21 @@ export function fmtDuration(ms: number): string {
   return h ? `${h}h ${m}m` : m ? `${m}m ${sec}s` : `${sec}s`
 }
 
+/** Ícone ⟳ à esquerda do título da página: re-corre os comandos de entrar na página (ignora a cache). Roda enquanto decorre. */
+export function RefreshIcon({ onRefresh, title = 'Refresh — re-run the commands of this page' }: { onRefresh: () => Promise<unknown> | void; title?: string }) {
+  const [spinning, setSpinning] = useState(false)
+  const click = async (): Promise<void> => {
+    if (spinning) return
+    setSpinning(true)
+    try {
+      await onRefresh()
+    } finally {
+      setSpinning(false)
+    }
+  }
+  return <button type="button" className={`refresh-icon${spinning ? ' spinning' : ''}`} title={title} aria-label="Refresh" onClick={() => void click()}>⟳</button>
+}
+
 /** Consola (pre) que colore as linhas de comando ($ …) a verde, erros (✗) a vermelho e cabeçalhos (--- …) a cinzento. */
 export function ConsoleOut({ text, placeholder, className = '', style }: { text: string; placeholder?: string; className?: string; style?: React.CSSProperties }) {
   if (!text) return <pre className={`resp-body console-out ${className}`} style={style}>{placeholder ?? ''}</pre>

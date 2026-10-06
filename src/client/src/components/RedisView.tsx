@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { RedisInfo, RedisKeyMeta, RedisKeyValue } from '../../../shared/types'
 import { api, FRESH, type ReqOpts } from '../api'
-import { Badge } from './common'
+import { Badge, RefreshIcon } from './common'
 
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
 const TYPE_TONE: Record<string, 'blue' | 'green' | 'amber' | 'purple' | 'muted' | 'red'> = { string: 'blue', hash: 'green', list: 'amber', set: 'purple', zset: 'purple', stream: 'muted' }
@@ -139,7 +139,7 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
     <main className="service">
       <div className="svc-header">
         <div className="grow">
-          <h2>Redis <Badge tone={connected ? 'green' : 'red'}>{connected ? 'connected' : 'not connected'}</Badge></h2>
+          <h2><RefreshIcon onRefresh={() => Promise.all([refreshInfo(FRESH), search('0')])} title="Refresh — re-run the commands that check Redis and its container" />Redis <Badge tone={connected ? 'green' : 'red'}>{connected ? 'connected' : 'not connected'}</Badge></h2>
           <div className="muted small">
             {info ? `${info.host}:${info.port} · db ${info.db}` : 'connecting…'}
             {connected && <> · v{info!.version} · {info!.keys} keys · {info!.usedMemory} · {info!.clients} clients · hits {info!.hits} / misses {info!.misses}</>}
@@ -155,7 +155,6 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
             {busy === 'container' ? 'Starting…' : ct.exists ? `▶ Start container ${ct.name}` : `▶ Create and start container ${ct.name}`}
           </button>
         )}
-        <button className="btn" disabled={!!busy} onClick={() => { void refreshInfo(FRESH); void search('0') }} title="Re-run the commands that check Redis and its container">⟳ Refresh</button>
         <button className="btn" disabled={!connected} onClick={() => setShowNew((v) => !v)}>+ New key</button>
         <span className="grow" />
         <button className="btn btn-danger" disabled={!connected || !!busy}

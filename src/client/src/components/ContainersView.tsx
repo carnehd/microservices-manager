@@ -3,7 +3,7 @@ import type { ContainerInfo, EngineInfo, ImageInfo, ProcState } from '../../../s
 import { api, FRESH, POLL, type ReqOpts } from '../api'
 import type { LogsApi } from '../hooks'
 import { LogView } from './LogView'
-import { Badge, ConsoleOut, StatusDot, isActive } from './common'
+import { Badge, ConsoleOut, RefreshIcon, StatusDot, isActive } from './common'
 
 type Tab = 'containers' | 'images' | 'logs' | 'console'
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
@@ -148,7 +148,7 @@ export function ContainersView({
     <main className="service">
       <div className="svc-header">
         <div className="grow">
-          <h2>Containers <Badge tone={engine?.available && !engine.error ? 'green' : 'red'}>{engine?.command ?? '…'}</Badge></h2>
+          <h2><RefreshIcon onRefresh={() => Promise.all([refresh(FRESH), refreshEngine(FRESH)])} title="Refresh — re-run version, machine list and ps" />Containers <Badge tone={engine?.available && !engine.error ? 'green' : 'red'}>{engine?.command ?? '…'}</Badge></h2>
           <div className="muted small">
             {engine === null && 'checking the engine…'}
             {engine && !engine.available && <span className="text-error">{engine.error}</span>}
@@ -172,7 +172,6 @@ export function ContainersView({
         ) : (
           <button className="btn" disabled={!!busy} onClick={() => void runMachine('stop', machine.name)}>{busy === 'machine' ? 'Stopping the machine…' : '■ Stop machine'}</button>
         ))}
-        <button className="btn" disabled={!!busy} onClick={() => { void refresh(FRESH); void refreshEngine(FRESH) }} title="Re-run the podman commands (version, machine list, ps)">⟳ Refresh</button>
         <label className="check"><input type="checkbox" checked={onlyRunning} onChange={(e) => setOnlyRunning(e.target.checked)} /> only running</label>
         <span className="grow" />
         <span className="muted small">refreshes every {REFRESH_MS / 1000} s</span>

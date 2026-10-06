@@ -185,6 +185,11 @@ p { margin: 0 0 8px; }
 /* Service view */
 .service { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .svc-header { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px 8px; }
+/* Ícone de refresh à esquerda do título da página (re-corre os comandos de entrar na página) */
+.refresh-icon { background: none; border: 1px solid transparent; color: var(--muted); font-size: 18px; line-height: 1; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; margin-right: 8px; vertical-align: middle; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.refresh-icon:hover { color: inherit; border-color: var(--border); background: var(--bg-3); }
+.refresh-icon.spinning { color: var(--green); animation: refresh-spin 0.9s linear infinite; cursor: progress; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 10px; }
 .tabs { display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--border); }
 .tabs button {
@@ -468,6 +473,7 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 
 /* ---- Pub/Sub ---- */
 .pubsub-view { padding: 16px; overflow-y: auto; }
+.service > .pubsub-view { flex: 1; min-height: 0; } /* com cabeçalho de página: a área dos cards é que faz scroll */
 .pubsub-view .srdb-card { max-width: 720px; }
 /* Ecrã dividido: esquerda = mensagens, direita = configurações */
 .pubsub-split { display: flex; gap: 16px; align-items: flex-start; }

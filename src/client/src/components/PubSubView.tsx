@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AppSettings, ContainerInfo, PubsubDetected, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult } from '../../../shared/types'
 import { api, FRESH, type ReqOpts } from '../api'
-import { ConsoleOut } from './common'
+import { ConsoleOut, RefreshIcon } from './common'
 
 // Porta do host mapeada para a porta 8085 do emulador num container existente (ex.: "0.0.0.0:8086->8085/tcp").
 function hostPortFor8085(ports: string[]): number | null {
@@ -304,6 +304,11 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const canManage = info.running || reachable
 
   return (
+    <main className="service">
+      <div className="svc-header"><div className="grow">
+        <h2><RefreshIcon onRefresh={() => Promise.all([loadInfo({ ...FRESH, log: true }), loadEntities()])} title="Refresh — re-run the commands that check the emulator" />Pub/Sub <span className={`pubsub-pill tone-${stateTone}`}>{stateTxt}</span></h2>
+        <div className="muted small">Local Google Cloud Pub/Sub emulator — topics, subscriptions and test messages for the microservices.</div>
+      </div></div>
     <div className="pubsub-view pubsub-split">
       {/* ESQUERDA — mensagens: consultar + criar mensagem de teste */}
       <div className="pubsub-left">
@@ -420,7 +425,6 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
               {busy === 'start' ? 'Starting…' : info.exists ? '▶ Start' : '▶ Create and start'}
             </button>
             <button className="btn btn-danger" disabled={busy !== null || !info.running} onClick={() => void run('stop', api.pubsub.stop)}>■ Stop</button>
-            <button className="btn" disabled={busy !== null} onClick={() => { void loadInfo({ ...FRESH, log: true }); if (info.running) void loadEntities() }} title="Re-run the podman commands that check the emulator state">⟳ Refresh</button>
           </div>
           {!info.engineOk && <p className="muted small">Container engine unavailable{info.error ? `: ${info.error}` : ''}.</p>}
           <div className="row" style={{ marginTop: 8 }}>
@@ -532,5 +536,6 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
         </div>
       </div>
     </div>
+    </main>
   )
 }

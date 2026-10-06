@@ -4,7 +4,7 @@ import { api, FRESH, POLL, type ReqOpts } from '../api'
 import type { LogsApi } from '../hooks'
 import { KcAdminPanel } from './KcAdminPanel'
 import { LogView } from './LogView'
-import { Badge, StatusPill, isActive } from './common'
+import { Badge, RefreshIcon, StatusPill, isActive } from './common'
 
 type Tab = 'logs' | 'providers' | 'admin'
 const KC_ID = 'keycloak'
@@ -119,7 +119,7 @@ export function KeycloakView({
     <main className="service">
       <div className="svc-header">
         <div className="grow">
-          <h2>Keycloak</h2>
+          <h2><RefreshIcon onRefresh={() => refreshInfo(FRESH)} title="Refresh — re-run the commands that check the Keycloak container" />Keycloak</h2>
           <div className="muted mono small">
             🐳 container <b>{kc.containerName}</b> · {kc.image}
             {info?.container && <> · {info.container.running ? 'running' : info.container.exists ? `stopped (${info.container.status ?? ''})` : 'not yet created'}</>}
@@ -137,9 +137,7 @@ export function KeycloakView({
           </button>
         )}
         {running && <button className="btn btn-danger" disabled={!!busy || state?.status === 'stopping'} onClick={() => run('stop', api.kcStop, () => void refreshInfo())}>{busy === 'stop' ? 'Stopping…' : '■ Stop'}</button>}
-        <button className="btn" disabled={!info?.valid || !!busy || state?.status === 'stopping'} onClick={() => run('restart', api.kcRestart, () => void refreshInfo())}>⟳ Restart</button>
-        <button className="btn" disabled={!!busy} onClick={() => void refreshInfo(FRESH)} title="Re-run the podman commands that check the Keycloak container">⟳ Refresh</button>
-        <button className="btn" disabled={!info?.valid || !!busy} title="Deletes and recreates the container with the current image/folders/port from Settings (data stays on disk)"
+        <button className="btn" disabled={!info?.valid || !!busy || state?.status === 'stopping'} onClick={() => run('restart', api.kcRestart, () => void refreshInfo())}>⟳ Restart</button>        <button className="btn" disabled={!info?.valid || !!busy} title="Deletes and recreates the container with the current image/folders/port from Settings (data stays on disk)"
           onClick={() => { if (confirm(`Recreate the container ${kc.containerName}? Data (H2) and providers stay on disk.`)) void run('recreate', api.kcRecreate, () => void refreshInfo()) }}>Recreate container</button>
         <span className="grow" />
         {links.map((l, i) => l.url && <button key={i} className="btn" onClick={() => api.openExternal(l.url)} title={l.url}>↗ {l.name || l.url}</button>)}
