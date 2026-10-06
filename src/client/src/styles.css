@@ -499,6 +499,7 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 .pubsub-env { position: relative; display: inline-flex; }
 .pubsub-env .srdb-popover { left: auto; right: 0; min-width: 480px; }
 .pubsub-env .srdb-field-label { min-width: 230px; }
+.pubsub-msg-tag { color: var(--accent); font-weight: 600; margin-right: 4px; }
 .pubsub-settings { display: flex; gap: 10px; align-items: flex-end; margin: 6px 0 10px; flex-wrap: wrap; }
 .pubsub-settings .field { display: flex; flex-direction: column; gap: 4px; }
 .pubsub-settings .field > span { font-size: 12px; color: var(--muted); }

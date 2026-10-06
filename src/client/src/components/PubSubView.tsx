@@ -50,8 +50,9 @@ export function PubSubView({ settings, scan, notify, fail }: {
   const [newTopic, setNewTopic] = useState('')
   const [newSub, setNewSub] = useState('')
   const [newSubTopic, setNewSubTopic] = useState('')
-  // Inbox aberta: guarda o projeto da subscrição (as mensagens são por projeto, independentes do seletor da direita).
-  const [inbox, setInbox] = useState<{ project: string; sub: string; data: PubSubInbox } | null>(null)
+  // Histórico de mensagens por subscrição ("projeto/sub" → inbox), de todos os projetos; o dropdown só filtra.
+  const [boxes, setBoxes] = useState<Record<string, PubSubInbox>>({})
+  const [filter, setFilter] = useState('') // '' = todas as subscrições; senão "projeto/sub"
   // Tópicos/subscrições de TODOS os projetos conhecidos (para consultar mensagens e publicar sem mudar o seletor).
   const [allTopics, setAllTopics] = useState<Array<{ project: string; name: string }>>([])
   const [allSubs, setAllSubs] = useState<Array<{ project: string; name: string; topic: string }>>([])
@@ -83,36 +84,45 @@ export function PubSubView({ settings, scan, notify, fail }: {
     }
   }
 
-  const openInbox = async (sub: string, proj: string = project) => {
-    setBusy('inbox:' + sub)
+  // Âmbito do feed: todas as subscrições conhecidas, ou só a filtrada.
+  const scopeSubs = (): Array<{ project: string; name: string }> => {
+    if (!filter) return allSubs
+    const i = filter.indexOf('/')
+    return [{ project: filter.slice(0, i), name: filter.slice(i + 1) }]
+  }
+  const setBox = (p: string, n: string, data: PubSubInbox): void => setBoxes((b) => ({ ...b, [pk(p, n)]: data }))
+  // Histórico já guardado na app — NÃO vai ao emulador (não consome mensagens a microserviços que subscrevam).
+  const loadBoxes = useCallback(async (subs: Array<{ project: string; name: string }>) => {
+    const r = await Promise.allSettled(subs.map(async (s) => ({ s, data: await api.pubsub.inbox(s.name, s.project) })))
+    setBoxes((b) => {
+      const n = { ...b }
+      for (const x of r) if (x.status === 'fulfilled') n[pk(x.value.s.project, x.value.s.name)] = x.value.data
+      return n
+    })
+  }, [])
+  // Vai buscar mensagens novas (pull+ack) no âmbito indicado — ação explícita do utilizador.
+  const refreshFeed = async (subs = scopeSubs()) => {
+    setBusy('feed')
     try {
-      setInbox({ project: proj, sub, data: await api.pubsub.poll(sub, 50, proj) })
+      for (const s of subs) setBox(s.project, s.name, await api.pubsub.poll(s.name, 50, s.project))
     } catch (e) {
       fail(e)
     } finally {
       setBusy(null)
     }
   }
-  const refreshInbox = async () => {
-    if (!inbox) return
+  const markRead = async (id?: string, only?: { project: string; name: string }) => {
     try {
-      setInbox({ ...inbox, data: await api.pubsub.poll(inbox.sub, 50, inbox.project) })
+      for (const s of only ? [only] : scopeSubs()) setBox(s.project, s.name, await api.pubsub.markRead(s.name, id, s.project))
     } catch (e) {
       fail(e)
     }
   }
-  const markRead = async (id?: string) => {
-    if (!inbox) return
+  const clearBoxes = async () => {
+    const subs = scopeSubs()
+    if (!subs.length || !window.confirm(`Clear the message history of ${subs.length === 1 ? subs[0].name : subs.length + ' subscriptions'}?`)) return
     try {
-      setInbox({ ...inbox, data: await api.pubsub.markRead(inbox.sub, id, inbox.project) })
-    } catch (e) {
-      fail(e)
-    }
-  }
-  const clearBox = async () => {
-    if (!inbox || !window.confirm('Clear the message history for this subscription?')) return
-    try {
-      setInbox({ ...inbox, data: await api.pubsub.clearInbox(inbox.sub, inbox.project) })
+      for (const s of subs) setBox(s.project, s.name, await api.pubsub.clearInbox(s.name, s.project))
     } catch (e) {
       fail(e)
     }
@@ -128,7 +138,8 @@ export function PubSubView({ settings, scan, notify, fail }: {
       const [proj, topicName] = [pubTopic.slice(0, i), pubTopic.slice(i + 1)] // "projeto/tópico"
       const r = await api.pubsub.publish(topicName, pubData, undefined, proj)
       notify(`Message published to ${topicName} (project ${proj})${r.messageId ? ` (#${r.messageId})` : ''}`, 'success')
-      if (inbox) await refreshInbox()
+      // mostra-a a chegar: só nas subscrições desse tópico/projeto
+      await refreshFeed(allSubs.filter((s) => s.project === proj && s.topic === topicName))
     } catch (e) {
       fail(e)
     } finally {
@@ -195,6 +206,10 @@ export function PubSubView({ settings, scan, notify, fail }: {
   useEffect(() => {
     setPubTopic((cur) => (cur && allTopics.some((t) => pk(t.project, t.name) === cur) ? cur : allTopics[0] ? pk(allTopics[0].project, allTopics[0].name) : ''))
   }, [allTopics])
+  // Quando as subscrições conhecidas mudam, carrega o histórico guardado (sem consumir nada do emulador).
+  useEffect(() => {
+    if (allSubs.length) void loadBoxes(allSubs)
+  }, [allSubs, loadBoxes])
 
   const run = async (key: string, fn: () => Promise<unknown>, after?: () => Promise<unknown> | void) => {
     setBusy(key)
@@ -275,7 +290,7 @@ export function PubSubView({ settings, scan, notify, fail }: {
                 <span className="grow" />
                 <button className="btn btn-sm btn-primary" disabled={busy !== null || !pubTopic} onClick={() => void publishTest()}>{busy === 'publish' ? 'Publishing…' : 'Publish'}</button>
               </div>
-              <p className="muted small">Publishes to the topic. To see it, open a subscription on that topic below and press <b>refresh</b>.</p>
+              <p className="muted small">Publishes to the topic; the subscriptions of that topic are refreshed right after, so the message shows up in <b>Messages</b> below.</p>
             </>
           )}
         </div>
@@ -283,14 +298,13 @@ export function PubSubView({ settings, scan, notify, fail }: {
         <div className="srdb-card pubsub-messages">
           <div className="row">
             <h3 style={{ margin: 0 }}>Messages</h3>
-            <label className="inline grow" style={{ minWidth: 0 }}>Consult subscription
-              <select className="input mono grow" style={{ minWidth: 0 }} value={inbox ? pk(inbox.project, inbox.sub) : ''} onChange={(e) => {
+            <label className="inline grow" style={{ minWidth: 0 }}>Filter
+              <select className="input mono grow" style={{ minWidth: 0 }} value={filter} onChange={(e) => {
                 const v = e.target.value
-                if (!v) { setInbox(null); return }
-                const i = v.indexOf('/')
-                void openInbox(v.slice(i + 1), v.slice(0, i))
-              }} title="Choose the subscription whose messages you want to consult (all projects)" disabled={!canManage}>
-                <option value="">choose a subscription…</option>
+                setFilter(v)
+                if (v) { const i = v.indexOf('/'); void refreshFeed([{ project: v.slice(0, i), name: v.slice(i + 1) }]) } // escolher uma subscrição vai logo buscar as novas
+              }} title="All subscriptions of all projects, or just one" disabled={!canManage}>
+                <option value="">all subscriptions ({allSubs.length})</option>
                 {projectOptions.filter((p) => allSubs.some((s) => s.project === p)).map((p) => (
                   <optgroup key={p} label={`project ${p}`}>
                     {allSubs.filter((s) => s.project === p).map((s) => <option key={pk(p, s.name)} value={pk(p, s.name)}>{s.name} → {s.topic}</option>)}
@@ -300,30 +314,36 @@ export function PubSubView({ settings, scan, notify, fail }: {
             </label>
           </div>
           {!canManage && <div className="muted small">Start the emulator to view messages.</div>}
-          {canManage && !inbox && <div className="muted small">Choose a subscription above to consult its messages.</div>}
-          {inbox && (
-            <>
-              <div className="row">
-                <span className="muted small"><span className="mono">{inbox.sub}</span> (project {inbox.project}) · {inbox.data.messages.length} message{inbox.data.messages.length === 1 ? '' : 's'}
-                  {inbox.data.unread > 0 && <span className="pubsub-unread-badge">{inbox.data.unread} unread</span>}
-                </span>
-                <span className="grow" />
-                <button className="btn btn-sm" onClick={() => void refreshInbox()}>⟳ refresh</button>
-                <button className="btn btn-sm" disabled={inbox.data.unread === 0} onClick={() => void markRead()}>mark all read</button>
-                <button className="btn btn-sm btn-ghost" onClick={() => void clearBox()}>clear</button>
-              </div>
-              {inbox.data.messages.length === 0 && <div className="muted small">No messages in the history. Publish a test message above (or create an operation) and press <b>refresh</b>.</div>}
-              {[...inbox.data.messages].reverse().map((m) => (
-                <div className={`pubsub-msg ${m.read ? 'read' : 'unread'}`} key={m.id} title={m.read ? 'read' : 'click to mark as read'} onClick={() => { if (!m.read) void markRead(m.id) }}>
-                  <div className="small mono pubsub-msg-head">
-                    <span className="pubsub-dot">{m.read ? '○' : '●'}</span> #{m.messageId} · {m.publishTime}{m.attributes && Object.keys(m.attributes).length ? ' · ' + JSON.stringify(m.attributes) : ''}
-                  </div>
-                  <pre className="resp-body">{prettyJson(m.data)}</pre>
+          {canManage && (() => {
+            const scope = scopeSubs()
+            const feed = scope
+              .flatMap((s) => (boxes[pk(s.project, s.name)]?.messages ?? []).map((m) => ({ ...m, project: s.project, sub: s.name })))
+              .sort((a, b) => (b.receivedAt ?? '').localeCompare(a.receivedAt ?? ''))
+            const unread = feed.filter((m) => !m.read).length
+            return (
+              <>
+                <div className="row">
+                  <span className="muted small">{feed.length} message{feed.length === 1 ? '' : 's'} in {filter ? '1 subscription' : `${scope.length} subscriptions`}
+                    {unread > 0 && <span className="pubsub-unread-badge">{unread} unread</span>}
+                  </span>
+                  <span className="grow" />
+                  <button className="btn btn-sm" disabled={busy !== null || !scope.length} title={filter ? 'Pull new messages of this subscription' : 'Pull new messages of ALL subscriptions (consumes them from the emulator)'} onClick={() => void refreshFeed()}>{busy === 'feed' ? 'refreshing…' : '⟳ refresh'}</button>
+                  <button className="btn btn-sm" disabled={unread === 0} onClick={() => void markRead()}>mark all read</button>
+                  <button className="btn btn-sm btn-ghost" disabled={!feed.length} onClick={() => void clearBoxes()}>clear</button>
                 </div>
-              ))}
-              <p className="muted small">Messages are pulled from the emulator and kept here (history). <b>Unread</b> (●) are marked read when clicked. History is lost if the app restarts.</p>
-            </>
-          )}
+                {feed.length === 0 && <div className="muted small">No messages in the history{filter ? ' of this subscription' : ''}. Publish a test message above (or let a microservice publish) and press <b>refresh</b>.</div>}
+                {feed.map((m) => (
+                  <div className={`pubsub-msg ${m.read ? 'read' : 'unread'}`} key={`${m.project}/${m.sub}/${m.id}`} title={m.read ? 'read' : 'click to mark as read'} onClick={() => { if (!m.read) void markRead(m.id, { project: m.project, name: m.sub }) }}>
+                    <div className="small mono pubsub-msg-head">
+                      <span className="pubsub-dot">{m.read ? '○' : '●'}</span> <span className="pubsub-msg-tag">{m.project} · {m.sub}</span> #{m.messageId} · {m.publishTime}{m.attributes && Object.keys(m.attributes).length ? ' · ' + JSON.stringify(m.attributes) : ''}
+                    </div>
+                    <pre className="resp-body">{prettyJson(m.data)}</pre>
+                  </div>
+                ))}
+                <p className="muted small">History kept by the app (lost if it restarts). <b>refresh</b> pulls (and acknowledges) new messages from the emulator in the filtered scope — on "all subscriptions" that includes the ones your microservices consume. <b>Unread</b> (●) are marked read when clicked.</p>
+              </>
+            )
+          })()}
         </div>
       </div>
 
@@ -406,8 +426,8 @@ export function PubSubView({ settings, scan, notify, fail }: {
                   <li key={s.name}>
                     <span className="mono">{s.name}</span> <span className="muted small">→ {s.topic}</span>
                     <span className="grow" />
-                    <button className="btn btn-sm" disabled={busy !== null} title="Consult the message history for this subscription" onClick={() => void openInbox(s.name)}>
-                      {busy === 'inbox:' + s.name ? 'opening…' : 'view messages'}
+                    <button className="btn btn-sm" disabled={busy !== null} title="Filter Messages by this subscription and pull its new messages" onClick={() => { setFilter(pk(project, s.name)); void refreshFeed([{ project, name: s.name }]) }}>
+                      view messages
                     </button>
                     <button className="btn btn-sm btn-ghost" title="Delete" onClick={() => void run('delsub', () => api.pubsub.deleteSubscription(s.name, project), loadEntities)}>✕</button>
                   </li>
