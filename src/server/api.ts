@@ -4,6 +4,7 @@ import { basename, delimiter, join } from 'path'
 import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type SrDbInfo, type StartMode } from '../shared/types'
 import { addSseClient, broadcast } from './events'
 import { listDirs, openPath, openTerminal } from './fsapi'
+import { searchInServices } from './search'
 import { containerAction, containerState, engineInfo, ensureContainer, execContainerCommand, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
 import * as redisOps from './redis'
 import { depsCommandArgs, listDeps } from './deps'
@@ -421,6 +422,10 @@ apiRouter.post('/grafana/logs', h((req) => {
   return grafanaLogs(mergeGrafana(getSettings().grafana, b.cfg), { query: b.query, limit: b.limit, sinceMinutes: b.sinceMinutes })
 }))
 
+apiRouter.post('/search', h((req) => {
+  const exts = Array.isArray(req.body?.extensions) ? (req.body.extensions as string[]) : str(req.body?.extensions).split(/[,\s]+/).filter(Boolean)
+  return searchInServices(lastScan?.services ?? [], str(req.body?.query), exts, !!req.body?.caseSensitive)
+}))
 apiRouter.get('/fs/dirs', h((req) => listDirs(str(req.query.path) || undefined)))
 apiRouter.post('/shell/open-path', h((req) => openPath(str(req.body?.path))))
 apiRouter.post('/shell/open-terminal', h((req) => openTerminal(str(req.body?.path))))

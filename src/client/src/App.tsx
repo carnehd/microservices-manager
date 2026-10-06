@@ -7,6 +7,7 @@ import { KeycloakView } from './components/KeycloakView'
 import { DiagnosticsView } from './components/DiagnosticsView'
 import { GrafanaView } from './components/GrafanaView'
 import { PubSubView } from './components/PubSubView'
+import { SearchView } from './components/SearchView'
 import { MapView } from './components/MapView'
 import { RedisView } from './components/RedisView'
 import { ServiceView } from './components/ServiceView'
@@ -16,7 +17,7 @@ import { Toast, type ToastMsg } from './components/Toast'
 import { FolderPicker } from './components/FolderPicker'
 import { NavDot, type NavState, isActive } from './components/common'
 
-type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics' | 'map' | 'grafana' | 'pubsub'
+type View = 'services' | 'keycloak' | 'containers' | 'redis' | 'settings' | 'diagnostics' | 'map' | 'grafana' | 'pubsub' | 'search'
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -223,6 +224,7 @@ export default function App() {
             Services {runningCount > 0 && <span className="count">{runningCount}</span>}
           </button>
           <button className={view === 'map' ? 'active' : ''} onClick={() => setView('map')}>Map</button>
+          <button className={view === 'search' ? 'active' : ''} onClick={() => setView('search')}>Search</button>
           <button className={view === 'keycloak' ? 'active' : ''} onClick={() => setView('keycloak')}>
             <NavDot state={navDots.keycloak} /> Keycloak
           </button>
@@ -292,6 +294,7 @@ export default function App() {
         {view === 'redis' && <RedisView notify={notify} fail={fail} />}
         {view === 'grafana' && <GrafanaView settings={settings} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
         {view === 'pubsub' && <PubSubView settings={settings} scan={scan} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
+        {view === 'search' && <SearchView notify={notify} fail={fail} />}
         {view === 'map' && <MapView states={states} onSelect={(id) => { setSelectedId(id); setView('services') }} fail={fail} />}
         {view === 'diagnostics' && <DiagnosticsView fail={fail} notify={notify} />}
         {view === 'settings' && <SettingsView settings={settings} scan={scan} onSave={saveSettings} onRescan={() => rescan()} pickFolder={pickFolder} notify={notify} />}

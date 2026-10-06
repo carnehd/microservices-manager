@@ -1,6 +1,6 @@
 import type {
   AppSettings, ContainerInfo, ContainerExecResult, DeployResult, DirListing, BrunoCollection, DbInfo, DepGraph, DepsInfo, DiagReport, EngineInfo, GrafanaLogLine, GrafanaSettings, GrafanaTestResult, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
-  KeycloakInfo, LogLine, ProcState, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult, SrDbStatus, SrTableData, StartMode
+  KeycloakInfo, LogLine, ProcState, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult, SearchResult, SrDbStatus, SrTableData, StartMode
 } from '../../shared/types'
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
@@ -139,6 +139,7 @@ export const api = {
     return Promise.resolve()
   },
   openPath: (p: string) => req<void>('POST', '/api/shell/open-path', { path: p }),
+  search: (query: string, extensions: string, caseSensitive: boolean) => req<SearchResult>('POST', '/api/search', { query, extensions, caseSensitive }),
   openTerminal: (p: string) => req<void>('POST', '/api/shell/open-terminal', { path: p }),
   kcInfo: () => req<KeycloakInfo>('GET', '/api/kc/info'),
   kcStart: () => req<ProcState>('POST', '/api/kc/start'),

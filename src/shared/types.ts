@@ -104,6 +104,25 @@ export interface ServiceInfo {
   pubsub?: PubsubDetected
 }
 
+/** Pesquisa de texto nos ficheiros dos microserviços */
+export interface SearchHit {
+  service: string
+  serviceId: string
+  /** caminho relativo à pasta do serviço */
+  file: string
+  /** caminho absoluto (para abrir no editor/explorador) */
+  path: string
+  line: number
+  text: string
+}
+export interface SearchResult {
+  hits: SearchHit[]
+  /** nº de ficheiros lidos */
+  scanned: number
+  /** true se foi cortado por atingir o limite de resultados/ficheiros */
+  truncated: boolean
+}
+
 /** Pub/Sub detetado na configuração de um microserviço */
 export interface PubsubDetected {
   projectId?: string

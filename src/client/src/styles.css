@@ -134,6 +134,12 @@ p { margin: 0 0 8px; }
 .navdot-error { background: var(--red); box-shadow: 0 0 6px rgba(239, 91, 91, .5); }
 .navdot-none { background: transparent; border: 1px solid #555c66; box-shadow: none; }
 .console-out { margin: 0 16px 16px; max-height: calc(100vh - 320px); overflow: auto; white-space: pre-wrap; }
+.search-view .search-svc { margin-bottom: 14px; }
+.search-view .search-file { border: 1px solid var(--border); border-radius: 6px; margin: 6px 0; padding: 6px 8px; background: var(--bg-2); }
+.search-hit { display: flex; gap: 8px; padding: 1px 0; white-space: pre-wrap; word-break: break-word; }
+.search-hit .search-line { color: var(--muted); min-width: 42px; text-align: right; user-select: none; }
+.search-hit .search-text { flex: 1; }
+.search-hit mark { background: rgba(240, 180, 41, .35); color: inherit; border-radius: 2px; }
 .pubsub-detected { border-top: 1px solid var(--border); padding: 6px 0; display: flex; flex-direction: column; gap: 2px; }
 .pubsub-detected .mono { word-break: break-all; }
 .srdb-top { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 12px; }
