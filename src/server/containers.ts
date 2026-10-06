@@ -60,10 +60,14 @@ export function proxyEnv(): Record<string, string> {
   const no = s.noProxy?.trim() || DEFAULT_NO_PROXY
   return { HTTP_PROXY: http, http_proxy: http, HTTPS_PROXY: https, https_proxy: https, NO_PROXY: no, no_proxy: no }
 }
+/** Esconde a password de um URL de proxy (user:pass@host) antes de o mostrar no Terminal ou em erros. */
+function redactProxy(url: string | undefined): string {
+  return url ? url.replace(/\/\/([^:@/]+):[^@/]*@/, '//$1:***@') : 'not set'
+}
 /** Linha do comando como aparece no Terminal: com o proxy à frente quando está definido, para se ver que foi usado. */
 function cmdLine(cmd: string, args: string[]): string {
   const px = proxyEnv().HTTPS_PROXY
-  return `${px ? `HTTPS_PROXY=${px} ` : ''}${cmd} ${args.join(' ')}`
+  return `${px ? `HTTPS_PROXY=${redactProxy(px)} ` : ''}${cmd} ${args.join(' ')}`
 }
 
 function podmanEnv(): NodeJS.ProcessEnv {
@@ -89,7 +93,7 @@ async function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<str
     // Erro com assinatura de proxy (inalcançável, a bloquear o registo, a pedir autenticação): diz qual estava em uso e onde corrigir.
     const px = proxyEnv().HTTPS_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy
     if (/proxyconnect|Filtered|Proxy Authentication|407/i.test(msg) || (px && /no such host|Temporary failure in name resolution|connection refused/i.test(msg))) {
-      msg += ` — proxy problem (HTTPS_PROXY=${px ?? 'not set'}): fix it in Settings → Proxy, then Stop/Start the machine so the VM picks it up; note the first pull right after a restart can still use the previous proxy — retry once`
+      msg += ` — proxy problem (HTTPS_PROXY=${redactProxy(px)}): fix it in Settings → Proxy, then Stop/Start the machine so the VM picks it up; note the first pull right after a restart can still use the previous proxy — retry once`
     }
     logCmd(msg, 'err')
     throw new Error(msg)
