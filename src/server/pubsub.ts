@@ -1,5 +1,5 @@
 import type { PubSubInbox, PubSubInfo, PubSubMessage, PubSubSettings, PubSubStoredMessage, PubSubSubscription, PubSubTopic } from '../shared/types'
-import { containerState, engineInfo, ensureContainer } from './containers'
+import { containerState, engineInfo, ensureContainer, traceCommands } from './containers'
 import { getSettings } from './settings'
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_.~%+-]{2,254}$/ // nomes de tópico/subscrição do Pub/Sub
@@ -28,19 +28,22 @@ export async function pubsubInfo(): Promise<PubSubInfo> {
     emulatorHostLocal: `localhost:${p.port}`,
     emulatorHostContainer: `${p.containerName}:8085`
   }
-  try {
-    const engine = await engineInfo(cmd())
-    base.engineOk = engine.available
-    if (!engine.available) {
-      base.error = engine.error ?? 'container engine unavailable'
-      return base
+  const { commands } = await traceCommands(async () => {
+    try {
+      const engine = await engineInfo(cmd())
+      base.engineOk = engine.available
+      if (!engine.available) {
+        base.error = engine.error ?? 'container engine unavailable'
+        return
+      }
+      const st = await containerState(cmd(), p.containerName)
+      base.exists = st.exists
+      base.running = st.running
+    } catch (e) {
+      base.error = e instanceof Error ? e.message : String(e)
     }
-    const st = await containerState(cmd(), p.containerName)
-    base.exists = st.exists
-    base.running = st.running
-  } catch (e) {
-    base.error = e instanceof Error ? e.message : String(e)
-  }
+  })
+  base.commands = commands
   return base
 }
 

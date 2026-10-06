@@ -575,6 +575,8 @@ export interface PubSubInfo {
   /** para serviços noutro container na mesma rede */
   emulatorHostContainer: string
   error?: string
+  /** comandos de container corridos para obter este estado (para a app mostrar o que está a correr) */
+  commands?: string[]
 }
 
 export interface PubSubTopic {

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks'
 import { execFile } from 'child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
@@ -6,6 +7,14 @@ import { promisify } from 'util'
 import type { ContainerExecResult, ContainerInfo, EngineInfo, ImageInfo, MachineInfo } from '../shared/types'
 
 const execFileP = promisify(execFile)
+
+// Recolhe os comandos de container corridos dentro de uma região (para a app mostrar "que comandos estão a correr").
+const cmdTrace = new AsyncLocalStorage<string[]>()
+export async function traceCommands<T>(fn: () => Promise<T>): Promise<{ result: T; commands: string[] }> {
+  const sink: string[] = []
+  const result = await cmdTrace.run(sink, fn)
+  return { result, commands: sink }
+}
 
 // As imagens que a app usa são públicas. Em máquinas sem Docker Desktop, o ~/.docker/config.json
 // pode ter "credsStore": "desktop", fazendo o podman invocar o helper docker-credential-desktop
@@ -30,6 +39,7 @@ function podmanEnv(): NodeJS.ProcessEnv {
 
 /** Corre o comando e devolve stdout; erros trazem o stderr do podman/docker (mensagens úteis). */
 async function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<string> {
+  cmdTrace.getStore()?.push(`${cmd} ${args.join(' ')}`)
   try {
     const { stdout } = await execFileP(cmd, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, windowsHide: true, env: podmanEnv() })
     return stdout

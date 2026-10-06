@@ -464,6 +464,9 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 @media (max-width: 900px) { .pubsub-split { flex-direction: column; } }
 .pubsub-collapse { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; padding: 0; cursor: pointer; color: var(--text); text-align: left; }
 .pubsub-chevron { color: var(--muted); font-size: 12px; width: 12px; }
+.pubsub-mode { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+.pubsub-mode-opt { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 5px 12px; border: 1px solid rgba(128,128,128,.28); border-radius: 8px; cursor: pointer; }
+.pubsub-mode-opt.on { border-color: var(--accent, #4a7); background: rgba(80,160,120,.1); }
 .pubsub-settings { display: flex; gap: 10px; align-items: flex-end; margin: 6px 0 10px; flex-wrap: wrap; }
 .pubsub-settings .field { display: flex; flex-direction: column; gap: 4px; }
 .pubsub-settings .field > span { font-size: 12px; color: var(--muted); }
