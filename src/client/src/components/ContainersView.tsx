@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ContainerInfo, EngineInfo, ImageInfo, ProcState } from '../../../shared/types'
 import { api } from '../api'
 import type { LogsApi } from '../hooks'
@@ -40,6 +40,7 @@ export function ContainersView({
   const cmdName = engine?.command ?? 'podman'
 
   const appendConsole = useCallback((text: string) => setConsoleLog((prev) => (prev ? prev + '\n' : '') + text), [])
+  const didStartup = useRef(false)
   // Corre um comando (consola): regista o comando e o output (stdout/stderr + código/tempo).
   const runCmd = async (args: string[]): Promise<void> => {
     setBusy('cmd')
@@ -103,6 +104,30 @@ export function ContainersView({
     const t = setInterval(() => void refresh(true), REFRESH_MS)
     return () => clearInterval(t)
   }, [refresh])
+
+  // Ao entrar na página: mostra na consola os comandos (e o output/logs) corridos durante o loading.
+  useEffect(() => {
+    if (didStartup.current) return
+    didStartup.current = true
+    setTab('console')
+    void (async () => {
+      const e = await api.containers.engine().catch(() => null)
+      const cn = e?.command ?? 'podman'
+      const isDocker = /docker/i.test(cn)
+      appendConsole(`--- loading containers page (${new Date().toLocaleTimeString()}) ---`)
+      const seq: string[][] = [['version'], ...(isDocker ? [] : [['machine', 'list']]), ['ps', '-a'], ['images']]
+      for (const args of seq) {
+        appendConsole(`$ ${cn} ${args.join(' ')}`)
+        try {
+          const r = await api.containers.exec(args)
+          const out = [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n')
+          appendConsole(`${out || '(no output)'}\n— exit ${r.code} · ${r.ms} ms`)
+        } catch (err) {
+          appendConsole(`✗ ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+    })()
+  }, [appendConsole])
 
   const act = async (label: string, fn: () => Promise<unknown>, done?: string): Promise<void> => {
     setBusy(label)
