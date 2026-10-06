@@ -186,8 +186,8 @@ p { margin: 0 0 8px; }
 .service { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .svc-header { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px 8px; }
 /* Ícone de refresh à esquerda do título da página (re-corre os comandos de entrar na página) */
-.refresh-icon { background: none; border: 1px solid transparent; color: var(--muted); font-size: 18px; line-height: 1; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; margin-right: 8px; vertical-align: middle; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
-.refresh-icon:hover { color: inherit; border-color: var(--border); background: var(--bg-3); }
+.refresh-icon { background: none; border: 1px solid transparent; color: var(--green); font-size: 26px; font-weight: 700; line-height: 1; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; margin-right: 10px; vertical-align: middle; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.refresh-icon:hover { border-color: var(--green); background: rgba(62, 201, 123, .12); }
 .refresh-icon.spinning { color: var(--green); animation: refresh-spin 0.9s linear infinite; cursor: progress; }
 @keyframes refresh-spin { to { transform: rotate(360deg); } }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 10px; }

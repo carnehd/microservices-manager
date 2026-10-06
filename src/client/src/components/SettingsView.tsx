@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AppSettings, ScanResult } from '../../../shared/types'
+import { api } from '../api'
 
 export function SettingsView({
   settings, scan, onSave, onRescan, pickFolder, notify
@@ -13,6 +14,10 @@ export function SettingsView({
 }) {
   const [form, setForm] = useState<AppSettings>(settings)
   useEffect(() => setForm(settings), [settings])
+  // Ao abrir a página vai buscar as settings atuais ao servidor: podem ter mudado fora desta tab (API, outra tab).
+  useEffect(() => {
+    void api.getSettings().then(setForm).catch(() => { /* fica com as da app */ })
+  }, [])
   const set = <K extends keyof AppSettings>(k: K, v: AppSettings[K]): void => setForm((f) => ({ ...f, [k]: v }))
   const setKc = <K extends keyof AppSettings['keycloak']>(k: K, v: AppSettings['keycloak'][K]): void =>
     setForm((f) => ({ ...f, keycloak: { ...f.keycloak, [k]: v } }))
@@ -30,24 +35,25 @@ export function SettingsView({
     const rootChanged = form.rootFolder !== settings.rootFolder
     const saved = await onSave({
       rootFolder: form.rootFolder,
-      javaHome: form.javaHome?.trim() || undefined,
+      // campos opcionais: '' quando esvaziados (o servidor remove-os); undefined perder-se-ia no JSON
+      javaHome: (form.javaHome ?? '').trim(),
       mavenCommand: form.mavenCommand.trim() || 'mvn',
       preferWrapper: form.preferWrapper,
-      mavenRepoLocal: form.mavenRepoLocal?.trim() || undefined,
-      mavenSettingsFile: form.mavenSettingsFile?.trim() || undefined,
+      mavenRepoLocal: (form.mavenRepoLocal ?? '').trim(),
+      mavenSettingsFile: (form.mavenSettingsFile ?? '').trim(),
       baseDebugPort: Number(form.baseDebugPort) || 5005,
-      containerCommand: form.containerCommand?.trim() || undefined,
-      httpProxy: form.httpProxy?.trim() || undefined,
-      httpsProxy: form.httpsProxy?.trim() || undefined,
-      noProxy: form.noProxy?.trim() || undefined,
+      containerCommand: (form.containerCommand ?? '').trim(),
+      httpProxy: (form.httpProxy ?? '').trim(),
+      httpsProxy: (form.httpsProxy ?? '').trim(),
+      noProxy: (form.noProxy ?? '').trim(),
       keycloak: {
         ...form.keycloak,
         httpPort: Number(form.keycloak.httpPort) || 8080,
-        extraArgs: form.keycloak.extraArgs?.trim() || undefined,
+        extraArgs: (form.keycloak.extraArgs ?? '').trim(),
         containerName: form.keycloak.containerName?.trim() || 'msm-keycloak',
         image: form.keycloak.image?.trim() || 'quay.io/keycloak/keycloak:26.7.4',
-        providersDir: form.keycloak.providersDir?.trim() || undefined,
-        dataDir: form.keycloak.dataDir?.trim() || undefined
+        providersDir: (form.keycloak.providersDir ?? '').trim(),
+        dataDir: (form.keycloak.dataDir ?? '').trim()
       },
       postgres: {
         ...form.postgres,
@@ -61,7 +67,7 @@ export function SettingsView({
         host: form.redis.host.trim() || 'localhost',
         port: Number(form.redis.port) || 6379,
         db: Number(form.redis.db) || 0,
-        password: form.redis.password?.trim() || undefined,
+        password: (form.redis.password ?? '').trim(),
         containerName: form.redis.containerName.trim() || 'msm-redis',
         image: form.redis.image.trim() || 'docker.io/library/redis:7-alpine'
       }

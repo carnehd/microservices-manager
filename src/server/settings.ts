@@ -65,6 +65,13 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
     pubsub: { ...current.pubsub, ...(patch.pubsub ?? {}) },
     services: patch.services ?? current.services
   }
+  // Campos opcionais esvaziados no formulário chegam como '' (undefined perde-se no JSON): removem-se,
+  // para que "limpar e gravar" limpe mesmo (ex.: proxy, javaHome, password do redis).
+  const stripEmpty = (o: Record<string, unknown>): void => {
+    for (const k of Object.keys(o)) if (o[k] === '') delete o[k]
+  }
+  stripEmpty(next as unknown as Record<string, unknown>)
+  for (const g of ['keycloak', 'redis', 'postgres', 'grafana', 'pubsub'] as const) stripEmpty(next[g] as unknown as Record<string, unknown>)
   cache = next
   const file = settingsFile()
   mkdirSync(dirname(file), { recursive: true })
