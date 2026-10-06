@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AppSettings, PubsubDetected, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult } from '../../../shared/types'
+import type { AppSettings, PubsubDetected, PubSubInbox, PubSubInfo, ScanResult } from '../../../shared/types'
 import { api, FRESH, type ReqOpts } from '../api'
 import { RefreshIcon } from './common'
 
@@ -41,12 +41,14 @@ export function PubSubView({ settings, scan, notify, fail }: {
   settings: AppSettings; scan: ScanResult | null; notify: Notify; fail: (e: unknown) => void
 }) {
   const [info, setInfo] = useState<PubSubInfo | null>(null)
-  const [topics, setTopics] = useState<PubSubTopic[]>([])
-  const [subs, setSubs] = useState<PubSubSubscription[]>([])
   const [busy, setBusy] = useState<string | null>(null)
-  // Projeto ativo para gerir/ver (o emulador hospeda vários). Opções = o das definições + os detetados.
-  const [project, setProject] = useState(settings.pubsub.projectId)
-  const projectOptions = [...new Set([settings.pubsub.projectId, project, ...(scan?.services ?? []).map((s) => s.pubsub?.projectId).filter((x): x is string => !!x)])]
+  // Projetos conhecidos = o das definições + os detetados nos microserviços (o emulador hospeda vários).
+  const projectOptions = [...new Set([settings.pubsub.projectId, ...(scan?.services ?? []).map((s) => s.pubsub?.projectId).filter((x): x is string => !!x)])]
+  // Projeto onde a criação MANUAL de tópicos/subscrições fica (tudo o resto é por projeto de cada item).
+  const [createProject, setCreateProject] = useState(settings.pubsub.projectId)
+  // Cards da esquerda colapsados por omissão.
+  const [detOpen, setDetOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const [newTopic, setNewTopic] = useState('')
   const [newSub, setNewSub] = useState('')
   const [newSubTopic, setNewSubTopic] = useState('')
@@ -68,15 +70,14 @@ export function PubSubView({ settings, scan, notify, fail }: {
   // Cria no emulador os tópicos/subscrições detetados num microserviço.
   const createDetected = async (svcName: string, d: PubsubDetected) => {
     setBusy('detected:' + svcName)
-    const proj = d.projectId || project // cria no projeto do microserviço
+    const proj = d.projectId || settings.pubsub.projectId // cria no projeto do microserviço (senão, o por omissão)
     try {
       const wanted = new Set<string>(d.topics)
       for (const s of d.subscriptions) wanted.add(s.topic || topicForSub(s.name))
       for (const t of wanted) { try { await api.pubsub.createTopic(t, proj) } catch { /* já existe */ } }
       for (const s of d.subscriptions) { try { await api.pubsub.createSubscription(s.name, s.topic || topicForSub(s.name), proj) } catch { /* já existe */ } }
       notify(`Created ${wanted.size} topic(s) and ${d.subscriptions.length} subscription(s) from ${svcName} in project ${proj}`, 'success')
-      if (proj !== project) setProject(proj) // passa a ver o projeto do serviço
-      else await loadEntities()
+      await loadEntities()
     } catch (e) {
       fail(e)
     } finally {
@@ -167,19 +168,18 @@ export function PubSubView({ settings, scan, notify, fail }: {
   }, [fail])
 
   const projectsKey = projectOptions.join(',')
+  const defaultProject = settings.pubsub.projectId
   const loadEntities = useCallback(async () => {
     try {
-      const [t, s] = await Promise.all([api.pubsub.topics(project), api.pubsub.subscriptions(project)])
-      setTopics(t)
-      setSubs(s)
+      await api.pubsub.topics(defaultProject)
       setReachable(true) // o emulador respondeu (REST ok) — mesmo que não haja container local detetado
     } catch {
-      setTopics([])
-      setSubs([])
+      setAllTopics([])
+      setAllSubs([])
       setReachable(false)
       return
     }
-    // E os de todos os projetos conhecidos, para a coluna da esquerda (mensagens/publicar) não depender do seletor.
+    // Tópicos e subscrições de todos os projetos conhecidos (cada item traz o seu projeto).
     const projects = projectsKey.split(',').filter(Boolean)
     const per = await Promise.allSettled(projects.map(async (p) => ({
       p, t: await api.pubsub.topics(p), s: await api.pubsub.subscriptions(p)
@@ -193,7 +193,7 @@ export function PubSubView({ settings, scan, notify, fail }: {
     }
     setAllTopics(at)
     setAllSubs(as)
-  }, [project, projectsKey])
+  }, [defaultProject, projectsKey])
 
   useEffect(() => {
     void loadInfo()
@@ -265,11 +265,11 @@ export function PubSubView({ settings, scan, notify, fail }: {
         </div>
       </div>
     <div className="pubsub-view pubsub-split">
-      {/* ESQUERDA — mensagens: consultar + criar mensagem de teste */}
+      {/* ESQUERDA — publicar de teste (topo), e colapsados: o que está nos microserviços + gestão manual */}
       <div className="pubsub-left">
         <div className="srdb-card">
           <h3>Create test message</h3>
-          {!canManage && <div className="muted small">Start the emulator (on the right) to publish.</div>}
+          {!canManage && <div className="muted small">Start the emulator (top right) to publish.</div>}
           {canManage && (
             <>
               <div className="pubsub-form">
@@ -280,7 +280,7 @@ export function PubSubView({ settings, scan, notify, fail }: {
                         {allTopics.filter((t) => t.project === p).map((t) => <option key={pk(p, t.name)} value={pk(p, t.name)}>{t.name}</option>)}
                       </optgroup>
                     ))}
-                    {!allTopics.length && <option value="">(no topics — create one on the right)</option>}
+                    {!allTopics.length && <option value="">(no topics — create one below)</option>}
                   </select>
                 </label>
               </div>
@@ -290,11 +290,103 @@ export function PubSubView({ settings, scan, notify, fail }: {
                 <span className="grow" />
                 <button className="btn btn-sm btn-primary" disabled={busy !== null || !pubTopic} onClick={() => void publishTest()}>{busy === 'publish' ? 'Publishing…' : 'Publish'}</button>
               </div>
-              <p className="muted small">Publishes to the topic; the subscriptions of that topic are refreshed right after, so the message shows up in <b>Messages</b> below.</p>
+              <p className="muted small">Publishes to the topic; the subscriptions of that topic are refreshed right after, so the message shows up in <b>Messages</b> on the right.</p>
             </>
           )}
         </div>
 
+        {(() => {
+          const detected = (scan?.services ?? []).filter((s) => s.pubsub && (s.pubsub.topics.length || s.pubsub.subscriptions.length || s.pubsub.projectId))
+          return (
+            <div className="srdb-card">
+              <button className="pubsub-collapse" onClick={() => setDetOpen((v) => !v)} title={detOpen ? 'collapse' : 'expand'}>
+                <span className="pubsub-chevron">{detOpen ? '▾' : '▸'}</span>
+                <h3 style={{ margin: 0 }}>Detected in microservices <span className="count">{detected.length}</span></h3>
+              </button>
+              {detOpen && !detected.length && <p className="muted small">No Pub/Sub config found in the microservices (application.yaml / docker-compose).</p>}
+              {detOpen && detected.length > 0 && (
+                <>
+                  <p className="muted small">Pub/Sub config read from the services' application.yaml — create the topics/subscriptions in the local emulator (each in the service's own project).</p>
+                  {detected.map((s) => {
+                    const d = s.pubsub!
+                    const topicsToCreate = [...new Set<string>([...d.topics, ...d.subscriptions.map((x) => x.topic || topicForSub(x.name))])]
+                    return (
+                      <div key={s.id} className="pubsub-detected">
+                        <div className="row">
+                          <b className="mono small">{s.name}</b>
+                          {d.projectId && <span className="muted small">· project {d.projectId}</span>}
+                          <span className="grow" />
+                          <button className="btn btn-sm btn-primary" disabled={!canManage || busy !== null} title={canManage ? 'Create these topics/subscriptions in the emulator' : 'Start the emulator first'} onClick={() => void createDetected(s.name, d)}>
+                            {busy === 'detected:' + s.name ? 'Creating…' : '⇪ Create in emulator'}
+                          </button>
+                        </div>
+                        {topicsToCreate.length > 0 && <div className="small mono muted">topics: {topicsToCreate.join(', ')}</div>}
+                        {d.subscriptions.length > 0 && <div className="small mono muted">subs: {d.subscriptions.map((x) => `${x.name} → ${x.topic || topicForSub(x.name)}`).join(', ')}</div>}
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+            </div>
+          )
+        })()}
+
+        <div className="srdb-card">
+          <button className="pubsub-collapse" onClick={() => setCreateOpen((v) => !v)} title={createOpen ? 'collapse' : 'expand'}>
+            <span className="pubsub-chevron">{createOpen ? '▾' : '▸'}</span>
+            <h3 style={{ margin: 0 }}>Topics &amp; subscriptions <span className="count">{allTopics.length}</span> <span className="muted small">topics</span> <span className="count">{allSubs.length}</span> <span className="muted small">subscriptions</span></h3>
+          </button>
+          {createOpen && !canManage && <div className="muted small">Start the emulator to manage topics and subscriptions.</div>}
+          {createOpen && canManage && (
+            <>
+              <div className="pubsub-form">
+                <label className="inline">create in project
+                  <select className="input mono input-inline" value={createProject} onChange={(e) => { setCreateProject(e.target.value); setNewSubTopic('') }} title="Project where topics/subscriptions created by hand go">
+                    {projectOptions.map((p) => <option key={p} value={p}>{p}{p === settings.pubsub.projectId ? ' (default)' : ''}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="pubsub-form">
+                <input className="input mono" placeholder="topic-name" value={newTopic} onChange={(e) => setNewTopic(e.target.value)} />
+                <button className="btn btn-sm btn-primary" disabled={busy !== null || !newTopic.trim()} onClick={() => void run('topic', () => api.pubsub.createTopic(newTopic.trim(), createProject), () => { setNewTopic(''); return loadEntities() })}>Create topic</button>
+              </div>
+              <div className="pubsub-form">
+                <input className="input mono" placeholder="subscription-name" value={newSub} onChange={(e) => setNewSub(e.target.value)} />
+                <select className="input input-inline" value={newSubTopic} onChange={(e) => setNewSubTopic(e.target.value)}>
+                  <option value="">topic…</option>
+                  {allTopics.filter((t) => t.project === createProject).map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+                </select>
+                <button className="btn btn-sm btn-primary" disabled={busy !== null || !newSub.trim() || !newSubTopic} onClick={() => void run('sub', () => api.pubsub.createSubscription(newSub.trim(), newSubTopic, createProject), () => { setNewSub(''); return loadEntities() })}>Create subscription</button>
+              </div>
+              {projectOptions.filter((p) => allTopics.some((t) => t.project === p) || allSubs.some((s) => s.project === p)).map((p) => (
+                <div key={p} className="pubsub-detected">
+                  <div className="small muted">project <b className="mono">{p}</b></div>
+                  <ul className="pubsub-list">
+                    {allTopics.filter((t) => t.project === p).map((t) => (
+                      <li key={'t:' + t.name}>
+                        <span className="mono">{t.name}</span> <span className="muted small">topic</span>
+                        <button className="btn btn-sm btn-ghost" title="Delete topic" onClick={() => void run('deltopic', () => api.pubsub.deleteTopic(t.name, p), loadEntities)}>✕</button>
+                      </li>
+                    ))}
+                    {allSubs.filter((s) => s.project === p).map((s) => (
+                      <li key={'s:' + s.name}>
+                        <span className="mono">{s.name}</span> <span className="muted small">→ {s.topic}</span>
+                        <span className="grow" />
+                        <button className="btn btn-sm" disabled={busy !== null} title="Filter Messages by this subscription and pull its new messages" onClick={() => { setFilter(pk(p, s.name)); void refreshFeed([{ project: p, name: s.name }]) }}>view messages</button>
+                        <button className="btn btn-sm btn-ghost" title="Delete subscription" onClick={() => void run('delsub', () => api.pubsub.deleteSubscription(s.name, p), loadEntities)}>✕</button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              {!allTopics.length && !allSubs.length && <div className="muted small">Nothing in the emulator yet — use "Create in emulator" above, or create by hand.</div>}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* DIREITA — feed de mensagens de todas as subscrições */}
+      <div className="pubsub-right">
         <div className="srdb-card pubsub-messages">
           <div className="row">
             <h3 style={{ margin: 0 }}>Messages</h3>
@@ -344,98 +436,6 @@ export function PubSubView({ settings, scan, notify, fail }: {
               </>
             )
           })()}
-        </div>
-      </div>
-
-      {/* DIREITA — configurações: emulador, config dos microserviços, tópicos e subscrições */}
-      <div className="pubsub-right">
-        <div className="pubsub-settings" style={{ margin: 0 }}>
-          <label className="field grow"><span>Project (the emulator hosts several)</span>
-            <select className="input mono" value={project} onChange={(e) => setProject(e.target.value)} title="Project whose topics, subscriptions and messages you are viewing and managing">
-              {projectOptions.map((p) => <option key={p} value={p}>{p}{p === settings.pubsub.projectId ? ' (default)' : ''}</option>)}
-            </select>
-          </label>
-        </div>
-
-        {(() => {
-          const detected = (scan?.services ?? []).filter((s) => s.pubsub && (s.pubsub.topics.length || s.pubsub.subscriptions.length || s.pubsub.projectId))
-          if (!detected.length) return null
-          return (
-            <div className="srdb-card">
-              <h3>Detected in microservices <span className="count">{detected.length}</span></h3>
-              <p className="muted small">Pub/Sub config read from the services' application.yaml — create the topics/subscriptions in the local emulator.</p>
-              {detected.map((s) => {
-                const d = s.pubsub!
-                const topicsToCreate = [...new Set<string>([...d.topics, ...d.subscriptions.map((x) => x.topic || topicForSub(x.name))])]
-                return (
-                  <div key={s.id} className="pubsub-detected">
-                    <div className="row">
-                      <b className="mono small">{s.name}</b>
-                      {d.projectId && <span className="muted small">· project {d.projectId}</span>}
-                      <span className="grow" />
-                      <button className="btn btn-sm btn-primary" disabled={!canManage || busy !== null} title={canManage ? 'Create these topics/subscriptions in the emulator' : 'Start the emulator first'} onClick={() => void createDetected(s.name, d)}>
-                        {busy === 'detected:' + s.name ? 'Creating…' : '⇪ Create in emulator'}
-                      </button>
-                    </div>
-                    {topicsToCreate.length > 0 && <div className="small mono muted">topics: {topicsToCreate.join(', ')}</div>}
-                    {d.subscriptions.length > 0 && <div className="small mono muted">subs: {d.subscriptions.map((x) => `${x.name} → ${x.topic || topicForSub(x.name)}`).join(', ')}</div>}
-                  </div>
-                )
-              })}
-            </div>
-          )
-        })()}
-
-        <div className="srdb-card">
-          <h3>Create topics <span className="count">{topics.length}</span></h3>
-          {!canManage && <div className="muted small">Start the emulator to manage topics.</div>}
-          {canManage && (
-            <>
-              <div className="pubsub-form">
-                <input className="input mono" placeholder="topic-name" value={newTopic} onChange={(e) => setNewTopic(e.target.value)} />
-                <button className="btn btn-sm btn-primary" disabled={busy !== null || !newTopic.trim()} onClick={() => void run('topic', () => api.pubsub.createTopic(newTopic.trim(), project), () => { setNewTopic(''); return loadEntities() })}>Create</button>
-              </div>
-              <ul className="pubsub-list">
-                {topics.map((t) => (
-                  <li key={t.name}>
-                    <span className="mono">{t.name}</span>
-                    <button className="btn btn-sm btn-ghost" title="Delete" onClick={() => void run('deltopic', () => api.pubsub.deleteTopic(t.name, project), loadEntities)}>✕</button>
-                  </li>
-                ))}
-                {!topics.length && <li className="muted small">(no topics)</li>}
-              </ul>
-            </>
-          )}
-        </div>
-
-        <div className="srdb-card">
-          <h3>Create subscriptions <span className="count">{subs.length}</span></h3>
-          {!canManage && <div className="muted small">Start the emulator to manage subscriptions.</div>}
-          {canManage && (
-            <>
-              <div className="pubsub-form">
-                <input className="input mono" placeholder="subscription-name" value={newSub} onChange={(e) => setNewSub(e.target.value)} />
-                <select className="input input-inline" value={newSubTopic} onChange={(e) => setNewSubTopic(e.target.value)}>
-                  <option value="">topic…</option>
-                  {topics.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
-                </select>
-                <button className="btn btn-sm btn-primary" disabled={busy !== null || !newSub.trim() || !newSubTopic} onClick={() => void run('sub', () => api.pubsub.createSubscription(newSub.trim(), newSubTopic, project), () => { setNewSub(''); return loadEntities() })}>Create</button>
-              </div>
-              <ul className="pubsub-list">
-                {subs.map((s) => (
-                  <li key={s.name}>
-                    <span className="mono">{s.name}</span> <span className="muted small">→ {s.topic}</span>
-                    <span className="grow" />
-                    <button className="btn btn-sm" disabled={busy !== null} title="Filter Messages by this subscription and pull its new messages" onClick={() => { setFilter(pk(project, s.name)); void refreshFeed([{ project, name: s.name }]) }}>
-                      view messages
-                    </button>
-                    <button className="btn btn-sm btn-ghost" title="Delete" onClick={() => void run('delsub', () => api.pubsub.deleteSubscription(s.name, project), loadEntities)}>✕</button>
-                  </li>
-                ))}
-                {!subs.length && <li className="muted small">(no subscriptions)</li>}
-              </ul>
-            </>
-          )}
         </div>
       </div>
     </div>
