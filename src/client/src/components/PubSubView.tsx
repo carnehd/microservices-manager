@@ -242,7 +242,8 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   useEffect(() => {
     void loadInfo()
   }, [loadInfo])
-  // Ao entrar na página: mostra na consola os comandos (e o output/logs) corridos durante o loading.
+  // Ao entrar na página: mostra na consola só os comandos básicos para configurar o container
+  // (engine + estado do container). Sem `logs` — no PC da empresa os logs são lentos; usa o botão ⟳ logs.
   useEffect(() => {
     if (didStartup.current) return
     didStartup.current = true
@@ -258,18 +259,6 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
           const r = await api.containers.exec(args)
           const out = [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n')
           appendLog(`${out || '(no output)'}\n— exit ${r.code} · ${r.ms} ms`)
-        } catch (err) {
-          appendLog(`✗ ${err instanceof Error ? err.message : String(err)}`)
-        }
-      }
-      // logs do próprio container do emulador, se existir
-      const i = await api.pubsub.info().catch(() => null)
-      if (i?.exists) {
-        appendLog(`$ ${cn} logs --tail 60 ${i.containerName}`)
-        try {
-          const r = await api.containers.exec(['logs', '--tail', '60', i.containerName])
-          const out = [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n')
-          appendLog(out || '(no logs)')
         } catch (err) {
           appendLog(`✗ ${err instanceof Error ? err.message : String(err)}`)
         }
