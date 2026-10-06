@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react'
-import type { AppSettings, ScanResult } from '../../../shared/types'
+import type { AppSettings, ContainerInfo, ScanResult } from '../../../shared/types'
 import { api } from '../api'
+
+// Porta do host mapeada para a porta 8085 do emulador num container existente (ex.: "0.0.0.0:8086->8085/tcp").
+function hostPortFor8085(ports: string[]): number | null {
+  const s = ports.join(' ')
+  const m = s.match(/:(\d+)->8085\b/) ?? s.match(/:(\d+)->/)
+  const n = m ? Number(m[1]) : NaN
+  return Number.isFinite(n) && n > 0 ? n : null
+}
 
 export function SettingsView({
   settings, scan, onSave, onRescan, pickFolder, notify
@@ -25,6 +33,13 @@ export function SettingsView({
     setForm((f) => ({ ...f, redis: { ...f.redis, [k]: v } }))
   const setPg = <K extends keyof AppSettings['postgres']>(k: K, v: AppSettings['postgres'][K]): void =>
     setForm((f) => ({ ...f, postgres: { ...f.postgres, [k]: v } }))
+  const setPubsub = <K extends keyof AppSettings['pubsub']>(k: K, v: AppSettings['pubsub'][K]): void =>
+    setForm((f) => ({ ...f, pubsub: { ...f.pubsub, [k]: v } }))
+  // Containers existentes, para "usar container existente" no Pub/Sub (leitura em cache no servidor — não corre podman).
+  const [containers, setContainers] = useState<ContainerInfo[]>([])
+  useEffect(() => {
+    void api.containers.list().then(setContainers).catch(() => setContainers([]))
+  }, [])
 
   const pick = async (cur: string | undefined, apply: (dir: string) => void): Promise<void> => {
     const dir = await pickFolder(cur)
@@ -70,6 +85,13 @@ export function SettingsView({
         password: (form.redis.password ?? '').trim(),
         containerName: form.redis.containerName.trim() || 'msm-redis',
         image: form.redis.image.trim() || 'docker.io/library/redis:7-alpine'
+      },
+      pubsub: {
+        ...form.pubsub,
+        port: Number(form.pubsub.port) || 8085,
+        projectId: form.pubsub.projectId.trim() || 'local-project',
+        image: form.pubsub.image.trim() || 'gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators',
+        containerName: form.pubsub.containerName.trim() || 'msm-pubsub'
       }
     })
     if (saved) {
@@ -204,6 +226,35 @@ export function SettingsView({
                 <label>Image<input className="input mono" style={{ minWidth: 280 }} value={form.redis.image} onChange={(e) => setRedis('image', e.target.value)} /></label>
               </div>
               <p className="muted small">The "Create and start container" button on the Redis page runs <span className="mono">podman run -d --name &lt;container&gt; -p &lt;port&gt;:6379 &lt;image&gt;</span> (with <span className="mono">--requirepass</span> if there is a password).</p>
+            </div>
+          </section>
+
+          <section>
+            <h3>Pub/Sub (local emulator)</h3>
+            <div className="form">
+              <div className="form-row">
+                <label>Container name<input className="input mono" value={form.pubsub.containerName} onChange={(e) => setPubsub('containerName', e.target.value)} /></label>
+                <label>Port on the host (emulator listens on 8085 inside)<input className="input" type="number" value={form.pubsub.port} onChange={(e) => setPubsub('port', Number(e.target.value))} /></label>
+                <label>Default project ID<input className="input mono" value={form.pubsub.projectId} onChange={(e) => setPubsub('projectId', e.target.value)} /></label>
+              </div>
+              <label>
+                Image (swap for an alternative/internal mirror if gcr.io is blocked by your proxy)
+                <input className="input mono" value={form.pubsub.image} onChange={(e) => setPubsub('image', e.target.value)} placeholder="gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators" />
+              </label>
+              <label>
+                Use an existing container instead (fills name and port from a container already created elsewhere)
+                <select className="input mono" value="" onChange={(e) => {
+                  const c = containers.find((x) => x.name === e.target.value)
+                  if (!c) return
+                  setPubsub('containerName', c.name)
+                  const hp = hostPortFor8085(c.ports)
+                  if (hp) setPubsub('port', hp)
+                }}>
+                  <option value="">choose a container…</option>
+                  {containers.map((c) => <option key={c.id} value={c.name}>{c.name} — {c.image} ({c.state})</option>)}
+                </select>
+              </label>
+              <p className="muted small">Changes to image, port or container name only take effect on a new container — Stop the emulator on the Pub/Sub page and Create it again.</p>
             </div>
           </section>
 

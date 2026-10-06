@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AppSettings, ContainerInfo, PubsubDetected, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult } from '../../../shared/types'
+import type { AppSettings, PubsubDetected, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult } from '../../../shared/types'
 import { api, FRESH, type ReqOpts } from '../api'
-import { ConsoleOut, RefreshIcon } from './common'
-
-// Porta do host mapeada para a porta 8085 do emulador num container existente (ex.: "0.0.0.0:8086->8085/tcp").
-function hostPortFor8085(ports: string[]): number | null {
-  const s = ports.join(' ')
-  const m = s.match(/:(\d+)->8085\b/) ?? s.match(/:(\d+)->/)
-  const n = m ? Number(m[1]) : NaN
-  return Number.isFinite(n) && n > 0 ? n : null
-}
+import { RefreshIcon } from './common'
 
 // Tópico inferido para uma subscrição sem tópico explícito (tira sufixos -sub/-subscription/-dev…).
 function topicForSub(name: string): string {
@@ -25,7 +17,6 @@ function prettyJson(s: string): string {
 }
 
 type Notify = (text: string, kind?: 'error' | 'info' | 'success') => void
-type SaveSettings = (patch: Partial<AppSettings>) => Promise<AppSettings | null>
 
 function Field({ label, value, notify }: { label: string; value: string; notify: Notify }) {
   const copy = async () => {
@@ -45,17 +36,14 @@ function Field({ label, value, notify }: { label: string; value: string; notify:
   )
 }
 
-export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
-  settings: AppSettings; scan: ScanResult | null; onSaveSettings: SaveSettings; notify: Notify; fail: (e: unknown) => void
+// A configuração do emulador (porta, projeto, imagem, container) vive na página Settings; aqui só o que se usa no dia-a-dia.
+export function PubSubView({ settings, scan, notify, fail }: {
+  settings: AppSettings; scan: ScanResult | null; notify: Notify; fail: (e: unknown) => void
 }) {
   const [info, setInfo] = useState<PubSubInfo | null>(null)
   const [topics, setTopics] = useState<PubSubTopic[]>([])
   const [subs, setSubs] = useState<PubSubSubscription[]>([])
   const [busy, setBusy] = useState<string | null>(null)
-  const [port, setPort] = useState(String(settings.pubsub.port))
-  const [projectId, setProjectId] = useState(settings.pubsub.projectId)
-  const [image, setImage] = useState(settings.pubsub.image)
-  const [containerName, setContainerName] = useState(settings.pubsub.containerName)
   // Projeto ativo para gerir/ver (o emulador hospeda vários). Opções = o das definições + os detetados.
   const [project, setProject] = useState(settings.pubsub.projectId)
   const projectOptions = [...new Set([settings.pubsub.projectId, project, ...(scan?.services ?? []).map((s) => s.pubsub?.projectId).filter((x): x is string => !!x)])]
@@ -65,76 +53,10 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const [inbox, setInbox] = useState<{ sub: string; data: PubSubInbox } | null>(null)
   const [pubTopic, setPubTopic] = useState('')
   const [pubData, setPubData] = useState('{\n  "referencia": "TEST-001",\n  "descricao": "test message",\n  "estado": "NOVA"\n}')
-  const [cfgOpen, setCfgOpen] = useState(false)
-  const [emuLog, setEmuLog] = useState('')
-  const appendLog = (t: string) => setEmuLog((p) => (p ? p + '\n' : '') + t)
   // O emulador responde ao REST? (independente de haver um container local a correr — ex.: emulador remoto/partilhado)
   const [reachable, setReachable] = useState(false)
-  // Criar um container novo (msm-pubsub) ou apontar para um já existente.
-  const [mode, setMode] = useState<'new' | 'existing'>('new')
-  const [containerList, setContainerList] = useState<ContainerInfo[]>([])
-  const [picked, setPicked] = useState('')
-
-  const loadContainers = useCallback(async () => {
-    try {
-      setContainerList(await api.containers.list())
-    } catch { setContainerList([]) }
-  }, [])
-
-  // Aponta a app para um container existente: guarda o nome (e a porta do host) nas definições.
-  const useExisting = async () => {
-    const c = containerList.find((x) => x.name === picked)
-    if (!c) { notify('Choose a container', 'error'); return }
-    setBusy('use-existing')
-    try {
-      const hp = hostPortFor8085(c.ports)
-      await onSaveSettings({ pubsub: { ...settings.pubsub, containerName: c.name, ...(hp ? { port: hp } : {}) } })
-      setContainerName(c.name)
-      if (hp) setPort(String(hp))
-      appendLog(`→ using existing container "${c.name}"${hp ? ` (host port ${hp} → 8085)` : ''}`)
-      notify(`Now using container "${c.name}"`, 'success')
-      await loadInfo({ ...FRESH, log: true })
-      await loadEntities()
-    } catch (e) {
-      fail(e)
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  // Arranca/cria o emulador mostrando o comando, o resultado e os logs do container.
-  const startEmulator = async () => {
-    setBusy('start')
-    const name = info?.containerName ?? 'msm-pubsub'
-    appendLog(`$ ${info?.image ? `podman run -d --name ${name} -p ${info.port}:8085 ${info.image} gcloud beta emulators pubsub start --host-port=0.0.0.0:8085 --project=${info.projectId}` : `start ${name}`}`)
-    try {
-      const msg = await api.pubsub.start()
-      appendLog(msg)
-      await loadInfo()
-      await loadEntities()
-      // logs do container (startup do emulador) — espera um pouco e vai buscar
-      for (let i = 0; i < 6; i++) {
-        await new Promise((r) => setTimeout(r, 700))
-        try {
-          const r = await api.containers.exec(['logs', '--tail', '80', name])
-          const out = [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n')
-          if (out) { appendLog('--- container logs ---\n' + out); break }
-        } catch { /* ainda não há logs */ }
-      }
-    } catch (e) {
-      appendLog(`✗ ${e instanceof Error ? e.message : String(e)}`)
-      fail(e)
-    } finally {
-      setBusy(null)
-    }
-  }
-  const refreshEmuLogs = async () => {
-    const name = info?.containerName ?? 'msm-pubsub'
-    try {
-      const r = await api.containers.exec(['logs', '--tail', '120', name])
-      appendLog(`--- ${name} logs (${new Date().toLocaleTimeString()}) ---\n` + [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n'))
-    } catch (e) { appendLog(`✗ ${e instanceof Error ? e.message : String(e)}`) }
-  }
+  // Popover "ⓘ" com as variáveis de ambiente para os microserviços.
+  const [envOpen, setEnvOpen] = useState(false)
 
   // Cria no emulador os tópicos/subscrições detetados num microserviço.
   const createDetected = async (svcName: string, d: PubsubDetected) => {
@@ -213,16 +135,11 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
     }
   }
 
-  // Sem opções lê a cache do servidor (entrar é instantâneo). FRESH re-corre os comandos; log mostra-os na consola do card.
-  const loadInfo = useCallback(async (o?: ReqOpts & { log?: boolean }): Promise<PubSubInfo | null> => {
+  // Sem opções lê a cache do servidor (entrar é instantâneo). FRESH re-corre os comandos (ficam no Terminal comum).
+  const loadInfo = useCallback(async (o?: ReqOpts): Promise<PubSubInfo | null> => {
     try {
       const i = await api.pubsub.info(o)
       setInfo(i)
-      if (o?.log && i.commands?.length) {
-        setEmuLog((p) => (p ? p + '\n' : '')
-          + `--- checking emulator state (${new Date().toLocaleTimeString()}) ---\n`
-          + i.commands!.map((c) => `$ ${c}`).join('\n'))
-      }
       return i
     } catch (e) {
       fail(e)
@@ -246,9 +163,6 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   useEffect(() => {
     void loadInfo()
   }, [loadInfo])
-  useEffect(() => {
-    if (mode === 'existing') void loadContainers()
-  }, [mode, loadContainers])
   // Tenta sempre falar com o emulador (mesmo sem container local detetado): se responder, dá para gerir.
   useEffect(() => {
     if (info) void loadEntities()
@@ -274,28 +188,6 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
     }
   }
 
-  const saveSettings = async () => {
-    const p = Number(port)
-    if (!Number.isFinite(p) || p <= 0) {
-      notify('Invalid port', 'error')
-      return
-    }
-    if (!image.trim() || !/^[\w.-]+$/.test(containerName.trim())) {
-      notify('Invalid image or container name', 'error')
-      return
-    }
-    setBusy('save')
-    try {
-      await onSaveSettings({ pubsub: { ...settings.pubsub, port: p, projectId: projectId.trim() || 'local-project', image: image.trim(), containerName: containerName.trim() } })
-      notify('Pub/Sub settings saved', 'success')
-      await loadInfo()
-    } catch (e) {
-      fail(e)
-    } finally {
-      setBusy(null)
-    }
-  }
-
   if (!info) return <div className="muted pad">Loading…</div>
 
   const stateTxt = !info.engineOk ? 'engine unavailable' : info.running ? 'running' : info.exists ? 'stopped' : reachable ? 'reachable' : 'not created'
@@ -305,10 +197,36 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
 
   return (
     <main className="service">
-      <div className="svc-header"><div className="grow">
-        <h2><RefreshIcon onRefresh={() => Promise.all([loadInfo({ ...FRESH, log: true }), loadEntities()])} title="Refresh — re-run the commands that check the emulator" />Pub/Sub <span className={`pubsub-pill tone-${stateTone}`}>{stateTxt}</span></h2>
-        <div className="muted small">Local Google Cloud Pub/Sub emulator — topics, subscriptions and test messages for the microservices.</div>
-      </div></div>
+      <div className="svc-header">
+        <div className="grow">
+          <h2><RefreshIcon onRefresh={() => Promise.all([loadInfo(FRESH), loadEntities()])} title="Refresh — re-run the commands that check the emulator" />Pub/Sub <span className={`pubsub-pill tone-${stateTone}`}>{stateTxt}</span></h2>
+          <div className="muted small">
+            Local emulator{info.running ? <> on <span className="mono">localhost:{info.port}</span></> : ''} · container <span className="mono">{info.containerName}</span> · configure it in <b>Settings → Pub/Sub</b>; container logs on the <b>Containers</b> page.
+            {!info.engineOk && <span className="text-error"> Container engine unavailable{info.error ? `: ${info.error}` : ''}.</span>}
+          </div>
+        </div>
+        {/* Barra de estado: uma ação (criar/arrancar ou parar) + ⓘ com as env vars para os microserviços */}
+        <div className="pubsub-status-actions">
+          {!info.running && (
+            <button className="btn btn-primary" disabled={busy !== null || !info.engineOk} onClick={() => void run('start', api.pubsub.start, loadEntities)}>
+              {busy === 'start' ? 'Starting…' : info.exists ? '▶ Start' : '▶ Create and start'}
+            </button>
+          )}
+          {info.running && <button className="btn btn-danger" disabled={busy !== null} onClick={() => void run('stop', api.pubsub.stop)}>■ Stop</button>}
+          <span className="pubsub-env">
+            <button className="srdb-help" title="Environment variables for the microservices" onClick={() => setEnvOpen((v) => !v)}>ⓘ</button>
+            {envOpen && (
+              <div className="srdb-popover" onClick={(e) => e.stopPropagation()}>
+                <div className="small"><b>Set in the microservice that uses Pub/Sub</b> (no credentials needed):</div>
+                <Field label="PUBSUB_EMULATOR_HOST (on the host)" value={info.emulatorHostLocal} notify={notify} />
+                <Field label="PUBSUB_EMULATOR_HOST (in a container)" value={info.emulatorHostContainer} notify={notify} />
+                <Field label="PUBSUB_PROJECT_ID" value={info.projectId} notify={notify} />
+                <div className="muted small">Host JVM → <span className="mono">localhost</span>; service in another container → same network and <span className="mono">{info.containerName}:8085</span>.</div>
+              </div>
+            )}
+          </span>
+        </div>
+      </div>
     <div className="pubsub-view pubsub-split">
       {/* ESQUERDA — mensagens: consultar + criar mensagem de teste */}
       <div className="pubsub-left">
@@ -377,81 +295,12 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
 
       {/* DIREITA — configurações: emulador, config dos microserviços, tópicos e subscrições */}
       <div className="pubsub-right">
-        <div className="srdb-card">
-          <h3>Local Pub/Sub emulator <span className={`pubsub-pill tone-${stateTone}`}>{stateTxt}</span></h3>
-          <p className="muted small">Official Google Cloud Pub/Sub emulator, running in a container. Microservices use it by setting <span className="mono">PUBSUB_EMULATOR_HOST</span> (no credentials).</p>
-
-          <div className="pubsub-mode">
-            <label className={`pubsub-mode-opt${mode === 'new' ? ' on' : ''}`}>
-              <input type="radio" name="pubsub-mode" checked={mode === 'new'} onChange={() => setMode('new')} /> Criar container novo
-            </label>
-            <label className={`pubsub-mode-opt${mode === 'existing' ? ' on' : ''}`}>
-              <input type="radio" name="pubsub-mode" checked={mode === 'existing'} onChange={() => setMode('existing')} /> Usar container existente
-            </label>
-          </div>
-
-          {mode === 'existing' && (
-            <div className="pubsub-settings" style={{ alignItems: 'flex-end' }}>
-              <label className="field grow"><span>Container existente</span>
-                <select className="input mono" value={picked} onChange={(e) => setPicked(e.target.value)}>
-                  <option value="">choose a container…</option>
-                  {containerList.map((c) => <option key={c.id} value={c.name}>{c.name} — {c.image} ({c.state})</option>)}
-                </select>
-              </label>
-              <button className="btn btn-sm" disabled={busy !== null} onClick={() => void loadContainers()} title="Refresh the container list">⟳</button>
-              <button className="btn btn-sm btn-primary" disabled={busy !== null || !picked} onClick={() => void useExisting()}>{busy === 'use-existing' ? 'Using…' : 'Use this container'}</button>
-            </div>
-          )}
-
-          <div className="pubsub-settings">
-            <label className="field field-sm"><span>Port (host)</span><input className="input" value={port} onChange={(e) => setPort(e.target.value)} /></label>
-            <label className="field"><span>Project ID</span><input className="input mono" value={projectId} onChange={(e) => setProjectId(e.target.value)} /></label>
-            {mode === 'new' && <label className="field grow"><span>Image</span><input className="input mono" value={image} onChange={(e) => setImage(e.target.value)} title="Imagem do emulador. Podes trocar por uma alternativa (ex. no Docker Hub) se o gcr.io estiver bloqueado." /></label>}
-            <label className="field"><span>Container name</span><input className="input mono" value={containerName} onChange={(e) => setContainerName(e.target.value)} /></label>
-            <button className="btn btn-sm" disabled={busy !== null} onClick={() => void saveSettings()}>Save</button>
-          </div>
-          <p className="muted small">{mode === 'new'
-            ? <>Mudar a imagem/porta/container só tem efeito num container novo — faz <b>Stop</b> e recria.</>
-            : <>A app aponta para o container escolhido (assume a porta do host mapeada para 8085). Tem de ter o emulador Pub/Sub a correr nessa porta.</>}</p>
-          <div className="pubsub-settings">
-            <label className="field grow"><span>Managing project (o emulador hospeda vários)</span>
-              <select className="input mono" value={project} onChange={(e) => setProject(e.target.value)} title="Projeto cujos tópicos/subscrições/mensagens estás a ver e a gerir">
-                {projectOptions.map((p) => <option key={p} value={p}>{p}{p === settings.pubsub.projectId ? ' (default)' : ''}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="srdb-actions">
-            <button className="btn btn-primary" disabled={busy !== null || !info.engineOk || info.running} onClick={() => void startEmulator()}>
-              {busy === 'start' ? 'Starting…' : info.exists ? '▶ Start' : '▶ Create and start'}
-            </button>
-            <button className="btn btn-danger" disabled={busy !== null || !info.running} onClick={() => void run('stop', api.pubsub.stop)}>■ Stop</button>
-          </div>
-          {!info.engineOk && <p className="muted small">Container engine unavailable{info.error ? `: ${info.error}` : ''}.</p>}
-          <div className="row" style={{ marginTop: 8 }}>
-            <h4 style={{ margin: 0 }}>Container logs</h4>
-            <span className="grow" />
-            <button className="btn btn-sm" disabled={busy !== null || !info.exists} onClick={() => void refreshEmuLogs()}>⟳ logs</button>
-            <button className="btn btn-sm btn-ghost" disabled={!emuLog} onClick={() => setEmuLog('')}>clear</button>
-          </div>
-          <ConsoleOut text={emuLog} placeholder="(creating/starting the emulator shows here what happens — the podman command, the result and the container logs)" style={{ margin: 0, maxHeight: 220 }} />
-        </div>
-
-        <div className="srdb-card">
-          <button className="pubsub-collapse" onClick={() => setCfgOpen((v) => !v)} title={cfgOpen ? 'collapse' : 'expand'}>
-            <span className="pubsub-chevron">{cfgOpen ? '▾' : '▸'}</span>
-            <h3 style={{ margin: 0 }}>Configuration for the microservices</h3>
-          </button>
-          {cfgOpen && (
-            <>
-              <p className="muted small">Set these environment variables in the microservice that will use Pub/Sub:</p>
-              <div className="srdb-fields">
-                <Field label="PUBSUB_EMULATOR_HOST (on the host)" value={info.emulatorHostLocal} notify={notify} />
-                <Field label="PUBSUB_EMULATOR_HOST (in a container)" value={info.emulatorHostContainer} notify={notify} />
-                <Field label="PUBSUB_PROJECT_ID" value={info.projectId} notify={notify} />
-              </div>
-              <p className="muted small">On the host (Host JVM) use <span className="mono">localhost</span>; in a service in another container, connect it to the same network and use <span className="mono">{info.containerName}:8085</span>.</p>
-            </>
-          )}
+        <div className="pubsub-settings" style={{ margin: 0 }}>
+          <label className="field grow"><span>Project (the emulator hosts several)</span>
+            <select className="input mono" value={project} onChange={(e) => setProject(e.target.value)} title="Project whose topics, subscriptions and messages you are viewing and managing">
+              {projectOptions.map((p) => <option key={p} value={p}>{p}{p === settings.pubsub.projectId ? ' (default)' : ''}</option>)}
+            </select>
+          </label>
         </div>
 
         {(() => {

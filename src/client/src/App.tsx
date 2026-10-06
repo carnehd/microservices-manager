@@ -298,7 +298,7 @@ export default function App() {
         {view === 'containers' && <ContainersView logs={logs} states={states} notify={notify} fail={fail} />}
         {view === 'redis' && <RedisView notify={notify} fail={fail} />}
         {view === 'grafana' && <GrafanaView settings={settings} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
-        {view === 'pubsub' && <PubSubView settings={settings} scan={scan} onSaveSettings={saveSettings} notify={notify} fail={fail} />}
+        {view === 'pubsub' && <PubSubView settings={settings} scan={scan} notify={notify} fail={fail} />}
         {view === 'search' && <SearchView notify={notify} fail={fail} />}
         {view === 'map' && <MapView states={states} onSelect={(id) => { setSelectedId(id); setView('services') }} fail={fail} />}
         {view === 'diagnostics' && <DiagnosticsView fail={fail} notify={notify} />}
