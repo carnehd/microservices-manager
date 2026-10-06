@@ -54,6 +54,19 @@ export function fmtDuration(ms: number): string {
   return h ? `${h}h ${m}m` : m ? `${m}m ${sec}s` : `${sec}s`
 }
 
+/** Consola (pre) que colore as linhas de comando ($ …) a verde, erros (✗) a vermelho e cabeçalhos (--- …) a cinzento. */
+export function ConsoleOut({ text, placeholder, className = '', style }: { text: string; placeholder?: string; className?: string; style?: React.CSSProperties }) {
+  if (!text) return <pre className={`resp-body console-out ${className}`} style={style}>{placeholder ?? ''}</pre>
+  return (
+    <pre className={`resp-body console-out ${className}`} style={style}>
+      {text.split('\n').map((line, i) => {
+        const cls = line.startsWith('$ ') ? 'con-cmd' : line.startsWith('✗') ? 'con-err' : line.startsWith('--- ') || line.startsWith('→ ') ? 'con-head' : undefined
+        return <span key={i} className={cls}>{line}{'\n'}</span>
+      })}
+    </pre>
+  )
+}
+
 export function StatusPill({ state, port }: { state?: ProcState; port?: number }) {
   const now = useNow()
   const st = state?.status ?? 'stopped'

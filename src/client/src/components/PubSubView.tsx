@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AppSettings, ContainerInfo, PubsubDetected, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult } from '../../../shared/types'
 import { api } from '../api'
+import { ConsoleOut } from './common'
 
 // Porta do host mapeada para a porta 8085 do emulador num container existente (ex.: "0.0.0.0:8086->8085/tcp").
 function hostPortFor8085(ports: string[]): number | null {
@@ -420,7 +421,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
             <button className="btn btn-sm" disabled={busy !== null || !info.exists} onClick={() => void refreshEmuLogs()}>⟳ logs</button>
             <button className="btn btn-sm btn-ghost" disabled={!emuLog} onClick={() => setEmuLog('')}>clear</button>
           </div>
-          <pre className="resp-body console-out" style={{ margin: 0, maxHeight: 220 }}>{emuLog || '(creating/starting the emulator shows here what happens — the podman command, the result and the container logs)'}</pre>
+          <ConsoleOut text={emuLog} placeholder="(creating/starting the emulator shows here what happens — the podman command, the result and the container logs)" style={{ margin: 0, maxHeight: 220 }} />
         </div>
 
         <div className="srdb-card">

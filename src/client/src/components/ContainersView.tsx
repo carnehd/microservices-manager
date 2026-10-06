@@ -3,7 +3,7 @@ import type { ContainerInfo, EngineInfo, ImageInfo, ProcState } from '../../../s
 import { api } from '../api'
 import type { LogsApi } from '../hooks'
 import { LogView } from './LogView'
-import { Badge, StatusDot, isActive } from './common'
+import { Badge, ConsoleOut, StatusDot, isActive } from './common'
 
 type Tab = 'containers' | 'images' | 'logs' | 'console'
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
@@ -304,7 +304,7 @@ export function ContainersView({
               <button className="btn btn-sm" disabled={!consoleLog} onClick={() => setConsoleLog('')}>Clear</button>
             </div>
             <p className="muted small pad">Read-only diagnostic commands against <span className="mono">{cmdName}</span>. Starting/stopping the Podman machine also shows here.</p>
-            <pre className="resp-body console-out">{consoleLog || '(no output yet — run a command or start/stop the machine)'}</pre>
+            <ConsoleOut text={consoleLog} placeholder="(no output yet — run a command or start/stop the machine)" />
           </div>
         )}
       </div>
