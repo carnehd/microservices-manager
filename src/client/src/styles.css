@@ -33,6 +33,14 @@
   --blue: #2f7fd0;
   --code-bg: #14171d; /* logs/consolas continuam escuros para legibilidade */
 }
+/* No tema claro, as áreas de código/logs/consola são escuras → texto claro e as cores vivas do tema escuro lá dentro.
+   Re-definir as variáveis nestes contentores faz todas as regras internas (.con-cmd, .log-error, .term-err…) acertarem. */
+:root[data-theme="light"] .resp-body,
+:root[data-theme="light"] .log-box,
+:root[data-theme="light"] .terminal-body {
+  color: #e6e8eb;
+  --text: #e6e8eb; --muted: #9aa5b1; --green: #3ec97b; --red: #ef5b5b; --amber: #f0b429; --blue: #5ab0ff;
+}
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
@@ -56,7 +64,7 @@ p { margin: 0 0 8px; }
 .terminal-chevron { width: 12px; color: var(--muted); }
 .terminal-title { font-weight: 600; font-size: 13px; }
 .terminal-peek { color: var(--green); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
-.terminal-body { overflow: auto; padding: 6px 12px 10px; max-height: 32vh; white-space: pre-wrap; background: var(--bg); line-height: 1.5; }
+.terminal-body { overflow: auto; padding: 6px 12px 10px; max-height: 32vh; white-space: pre-wrap; background: var(--code-bg); line-height: 1.5; }
 .terminal-body .term-cmd { color: var(--green); font-weight: 600; }
 .terminal-body .term-ok { color: var(--muted); }
 .terminal-body .term-err { color: var(--red); }
@@ -342,7 +350,7 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(-
 .switch-track { position: relative; width: 34px; height: 18px; border-radius: 9px; background: #3a4250; transition: background .15s; flex-shrink: 0; }
 .switch-knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; }
 .switch.on { color: var(--text); }
-.switch.on .switch-track { background: var(--accent); }
+.switch.on .switch-track { background: var(--green); } /* ativa = verde, nos dois temas */
 .switch.on .switch-knob { left: 18px; }
 .switch:hover .switch-track { filter: brightness(1.15); }
 .switch-label { font-size: 13px; white-space: nowrap; }
