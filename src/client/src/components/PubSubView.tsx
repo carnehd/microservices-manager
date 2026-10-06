@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppSettings, ContainerInfo, PubsubDetected, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult } from '../../../shared/types'
 import { api } from '../api'
 import { ConsoleOut } from './common'
@@ -68,6 +68,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const [cfgOpen, setCfgOpen] = useState(false)
   const [emuLog, setEmuLog] = useState('')
   const appendLog = (t: string) => setEmuLog((p) => (p ? p + '\n' : '') + t)
+  const didStartup = useRef(false)
   // Criar um container novo (msm-pubsub) ou apontar para um já existente.
   const [mode, setMode] = useState<'new' | 'existing'>('new')
   const [containerList, setContainerList] = useState<ContainerInfo[]>([])
@@ -239,8 +240,42 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   }, [project])
 
   useEffect(() => {
-    void loadInfo(true)
+    void loadInfo()
   }, [loadInfo])
+  // Ao entrar na página: mostra na consola os comandos (e o output/logs) corridos durante o loading.
+  useEffect(() => {
+    if (didStartup.current) return
+    didStartup.current = true
+    void (async () => {
+      const e = await api.containers.engine().catch(() => null)
+      const cn = e?.command ?? 'podman'
+      const isDocker = /docker/i.test(cn)
+      appendLog(`--- loading pub/sub page (${new Date().toLocaleTimeString()}) ---`)
+      const seq: string[][] = [['version'], ...(isDocker ? [] : [['machine', 'list']]), ['ps', '-a']]
+      for (const args of seq) {
+        appendLog(`$ ${cn} ${args.join(' ')}`)
+        try {
+          const r = await api.containers.exec(args)
+          const out = [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n')
+          appendLog(`${out || '(no output)'}\n— exit ${r.code} · ${r.ms} ms`)
+        } catch (err) {
+          appendLog(`✗ ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+      // logs do próprio container do emulador, se existir
+      const i = await api.pubsub.info().catch(() => null)
+      if (i?.exists) {
+        appendLog(`$ ${cn} logs --tail 60 ${i.containerName}`)
+        try {
+          const r = await api.containers.exec(['logs', '--tail', '60', i.containerName])
+          const out = [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n')
+          appendLog(out || '(no logs)')
+        } catch (err) {
+          appendLog(`✗ ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+    })()
+  }, [])
   useEffect(() => {
     if (mode === 'existing') void loadContainers()
   }, [mode, loadContainers])
