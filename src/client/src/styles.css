@@ -13,6 +13,7 @@
   --purple: #b48cff;
   --blue: #5ab0ff;
   --code-bg: #0b0d11;
+  --btn-hover-bg: #252b35; --btn-hover-border: #3d4551;
   --mono: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, Menlo, monospace;
 }
 
@@ -32,6 +33,7 @@
   --purple: #7c53d6;
   --blue: #2f7fd0;
   --code-bg: #14171d; /* logs/consolas continuam escuros para legibilidade */
+  --btn-hover-bg: #e3e8ee; --btn-hover-border: #b9c2cc;
 }
 /* No tema claro, as áreas de código/logs/consola são escuras → texto claro e as cores vivas do tema escuro lá dentro.
    Re-definir as variáveis nestes contentores faz todas as regras internas (.con-cmd, .log-error, .term-err…) acertarem. */
@@ -99,7 +101,7 @@ p { margin: 0 0 8px; }
   background: var(--bg-3); color: var(--text); border: 1px solid var(--border);
   padding: 6px 12px; border-radius: 6px; cursor: pointer; font: inherit; white-space: nowrap;
 }
-.btn:hover:not(:disabled) { border-color: #3d4551; background: #252b35; }
+.btn:hover:not(:disabled) { border-color: var(--btn-hover-border); background: var(--btn-hover-bg); } /* por tema: no claro ficava preto */
 .btn:disabled { opacity: .45; cursor: default; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--accent-2); border-color: var(--accent-2); }
