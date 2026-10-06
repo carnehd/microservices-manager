@@ -50,7 +50,13 @@ export function PubSubView({ settings, scan, notify, fail }: {
   const [newTopic, setNewTopic] = useState('')
   const [newSub, setNewSub] = useState('')
   const [newSubTopic, setNewSubTopic] = useState('')
-  const [inbox, setInbox] = useState<{ sub: string; data: PubSubInbox } | null>(null)
+  // Inbox aberta: guarda o projeto da subscrição (as mensagens são por projeto, independentes do seletor da direita).
+  const [inbox, setInbox] = useState<{ project: string; sub: string; data: PubSubInbox } | null>(null)
+  // Tópicos/subscrições de TODOS os projetos conhecidos (para consultar mensagens e publicar sem mudar o seletor).
+  const [allTopics, setAllTopics] = useState<Array<{ project: string; name: string }>>([])
+  const [allSubs, setAllSubs] = useState<Array<{ project: string; name: string; topic: string }>>([])
+  // Valor dos dropdowns da esquerda: "projeto/nome" (nem project ids nem nomes de tópicos podem conter "/").
+  const pk = (p: string, n: string): string => `${p}/${n}`
   const [pubTopic, setPubTopic] = useState('')
   const [pubData, setPubData] = useState('{\n  "referencia": "TEST-001",\n  "descricao": "test message",\n  "estado": "NOVA"\n}')
   // O emulador responde ao REST? (independente de haver um container local a correr — ex.: emulador remoto/partilhado)
@@ -77,10 +83,10 @@ export function PubSubView({ settings, scan, notify, fail }: {
     }
   }
 
-  const openInbox = async (sub: string) => {
+  const openInbox = async (sub: string, proj: string = project) => {
     setBusy('inbox:' + sub)
     try {
-      setInbox({ sub, data: await api.pubsub.poll(sub, 50, project) })
+      setInbox({ project: proj, sub, data: await api.pubsub.poll(sub, 50, proj) })
     } catch (e) {
       fail(e)
     } finally {
@@ -90,7 +96,7 @@ export function PubSubView({ settings, scan, notify, fail }: {
   const refreshInbox = async () => {
     if (!inbox) return
     try {
-      setInbox({ sub: inbox.sub, data: await api.pubsub.poll(inbox.sub, 50, project) })
+      setInbox({ ...inbox, data: await api.pubsub.poll(inbox.sub, 50, inbox.project) })
     } catch (e) {
       fail(e)
     }
@@ -98,7 +104,7 @@ export function PubSubView({ settings, scan, notify, fail }: {
   const markRead = async (id?: string) => {
     if (!inbox) return
     try {
-      setInbox({ sub: inbox.sub, data: await api.pubsub.markRead(inbox.sub, id, project) })
+      setInbox({ ...inbox, data: await api.pubsub.markRead(inbox.sub, id, inbox.project) })
     } catch (e) {
       fail(e)
     }
@@ -106,7 +112,7 @@ export function PubSubView({ settings, scan, notify, fail }: {
   const clearBox = async () => {
     if (!inbox || !window.confirm('Clear the message history for this subscription?')) return
     try {
-      setInbox({ sub: inbox.sub, data: await api.pubsub.clearInbox(inbox.sub, project) })
+      setInbox({ ...inbox, data: await api.pubsub.clearInbox(inbox.sub, inbox.project) })
     } catch (e) {
       fail(e)
     }
@@ -118,8 +124,10 @@ export function PubSubView({ settings, scan, notify, fail }: {
     }
     setBusy('publish')
     try {
-      const r = await api.pubsub.publish(pubTopic, pubData, undefined, project)
-      notify(`Message published to ${pubTopic}${r.messageId ? ` (#${r.messageId})` : ''}`, 'success')
+      const i = pubTopic.indexOf('/')
+      const [proj, topicName] = [pubTopic.slice(0, i), pubTopic.slice(i + 1)] // "projeto/tópico"
+      const r = await api.pubsub.publish(topicName, pubData, undefined, proj)
+      notify(`Message published to ${topicName} (project ${proj})${r.messageId ? ` (#${r.messageId})` : ''}`, 'success')
       if (inbox) await refreshInbox()
     } catch (e) {
       fail(e)
@@ -147,6 +155,7 @@ export function PubSubView({ settings, scan, notify, fail }: {
     }
   }, [fail])
 
+  const projectsKey = projectOptions.join(',')
   const loadEntities = useCallback(async () => {
     try {
       const [t, s] = await Promise.all([api.pubsub.topics(project), api.pubsub.subscriptions(project)])
@@ -157,8 +166,23 @@ export function PubSubView({ settings, scan, notify, fail }: {
       setTopics([])
       setSubs([])
       setReachable(false)
+      return
     }
-  }, [project])
+    // E os de todos os projetos conhecidos, para a coluna da esquerda (mensagens/publicar) não depender do seletor.
+    const projects = projectsKey.split(',').filter(Boolean)
+    const per = await Promise.allSettled(projects.map(async (p) => ({
+      p, t: await api.pubsub.topics(p), s: await api.pubsub.subscriptions(p)
+    })))
+    const at: Array<{ project: string; name: string }> = []
+    const as: Array<{ project: string; name: string; topic: string }> = []
+    for (const r of per) {
+      if (r.status !== 'fulfilled') continue
+      for (const x of r.value.t) at.push({ project: r.value.p, name: x.name })
+      for (const x of r.value.s) as.push({ project: r.value.p, name: x.name, topic: x.topic })
+    }
+    setAllTopics(at)
+    setAllSubs(as)
+  }, [project, projectsKey])
 
   useEffect(() => {
     void loadInfo()
@@ -167,12 +191,10 @@ export function PubSubView({ settings, scan, notify, fail }: {
   useEffect(() => {
     if (info) void loadEntities()
   }, [info, loadEntities])
-  // Mantém o tópico escolhido para publicar válido (default = 1º tópico).
+  // Mantém o tópico escolhido para publicar válido (default = 1º tópico de qualquer projeto).
   useEffect(() => {
-    setPubTopic((cur) => (cur && topics.some((t) => t.name === cur) ? cur : topics[0]?.name ?? ''))
-  }, [topics])
-  // Mudar de projeto limpa a inbox aberta (é de outro projeto).
-  useEffect(() => { setInbox(null) }, [project])
+    setPubTopic((cur) => (cur && allTopics.some((t) => pk(t.project, t.name) === cur) ? cur : allTopics[0] ? pk(allTopics[0].project, allTopics[0].name) : ''))
+  }, [allTopics])
 
   const run = async (key: string, fn: () => Promise<unknown>, after?: () => Promise<unknown> | void) => {
     setBusy(key)
@@ -238,8 +260,12 @@ export function PubSubView({ settings, scan, notify, fail }: {
               <div className="pubsub-form">
                 <label className="inline grow">Topic
                   <select className="input mono grow" value={pubTopic} onChange={(e) => setPubTopic(e.target.value)}>
-                    {topics.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
-                    {!topics.length && <option value="">(no topics — create one on the right)</option>}
+                    {projectOptions.filter((p) => allTopics.some((t) => t.project === p)).map((p) => (
+                      <optgroup key={p} label={`project ${p}`}>
+                        {allTopics.filter((t) => t.project === p).map((t) => <option key={pk(p, t.name)} value={pk(p, t.name)}>{t.name}</option>)}
+                      </optgroup>
+                    ))}
+                    {!allTopics.length && <option value="">(no topics — create one on the right)</option>}
                   </select>
                 </label>
               </div>
@@ -257,11 +283,19 @@ export function PubSubView({ settings, scan, notify, fail }: {
         <div className="srdb-card pubsub-messages">
           <div className="row">
             <h3 style={{ margin: 0 }}>Messages</h3>
-            <span className="grow" />
-            <label className="inline">Consult subscription
-              <select className="input mono input-inline" value={inbox?.sub ?? ''} onChange={(e) => { if (e.target.value) void openInbox(e.target.value); else setInbox(null) }} title="Choose the subscription whose messages you want to consult" disabled={!canManage}>
+            <label className="inline grow" style={{ minWidth: 0 }}>Consult subscription
+              <select className="input mono grow" style={{ minWidth: 0 }} value={inbox ? pk(inbox.project, inbox.sub) : ''} onChange={(e) => {
+                const v = e.target.value
+                if (!v) { setInbox(null); return }
+                const i = v.indexOf('/')
+                void openInbox(v.slice(i + 1), v.slice(0, i))
+              }} title="Choose the subscription whose messages you want to consult (all projects)" disabled={!canManage}>
                 <option value="">choose a subscription…</option>
-                {subs.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+                {projectOptions.filter((p) => allSubs.some((s) => s.project === p)).map((p) => (
+                  <optgroup key={p} label={`project ${p}`}>
+                    {allSubs.filter((s) => s.project === p).map((s) => <option key={pk(p, s.name)} value={pk(p, s.name)}>{s.name} → {s.topic}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </label>
           </div>
@@ -270,7 +304,7 @@ export function PubSubView({ settings, scan, notify, fail }: {
           {inbox && (
             <>
               <div className="row">
-                <span className="muted small">{inbox.data.messages.length} message{inbox.data.messages.length === 1 ? '' : 's'}
+                <span className="muted small"><span className="mono">{inbox.sub}</span> (project {inbox.project}) · {inbox.data.messages.length} message{inbox.data.messages.length === 1 ? '' : 's'}
                   {inbox.data.unread > 0 && <span className="pubsub-unread-badge">{inbox.data.unread} unread</span>}
                 </span>
                 <span className="grow" />
