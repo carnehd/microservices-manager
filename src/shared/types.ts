@@ -425,6 +425,8 @@ export interface EnvMix {
   choices: Record<string, string>
   /** chave → valor personalizado escrito à mão (sobrepõe-se a choices/base) */
   values?: Record<string, string>
+  /** escrever cada valor como ${NOME_ENV:valor} (variável de ambiente sobrepõe-se, senão vale o default); omissão = true */
+  envPlaceholders?: boolean
 }
 export interface EnvKey {
   key: string

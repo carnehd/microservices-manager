@@ -295,7 +295,22 @@ function coerce(v: string): unknown {
   return v
 }
 
+/** Nome da variável de ambiente que o Spring associa a uma chave (relaxed binding): spring.datasource.url → SPRING_DATASOURCE_URL. */
+export function envNameFor(key: string): string {
+  return key.replace(/\[(\d+)\]/g, '_$1').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toUpperCase()
+}
+// Chaves de controlo do Spring que não devem ficar condicionadas a variáveis de ambiente.
+const NO_PLACEHOLDER = /^spring\.(profiles|config)\./
+/** `${NOME_ENV:valor}` para uma folha; undefined = deixar como está (objeto/lista, já é placeholder, chave de controlo). */
+function withPlaceholder(key: string, v: unknown): string | undefined {
+  if (v == null || typeof v === 'object' || NO_PLACEHOLDER.test(key)) return undefined
+  const s = String(v)
+  if (s.includes('${')) return undefined
+  return `\${${envNameFor(key)}:${s}}`
+}
+
 export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean): Promise<EnvComposeResult> {
+  const placeholders = mix.envPlaceholders !== false
   if (!/^[\w.-]+$/.test(mix.target)) throw new Error(`Invalid profile name: ${mix.target}`)
   const files = await readEnvFiles(svc)
   const base = files.find((f) => f.id === mix.base)
@@ -344,7 +359,8 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
   const header = [
     MARKER,
     `# Source profile: ${base.file}${applied.length ? ' · copied values: ' + applied.join(', ') : ''}`,
-    '# Do not edit by hand — regenerate in the Environments tab of the app.'
+    '# Do not edit by hand — regenerate in the Environments tab of the app.',
+    ...(placeholders ? ['# Values are ${ENV_VAR:default}: an environment variable with that name overrides the default (Spring relaxed binding).'] : [])
   ]
   let content: string
   if (base.format === 'yaml') {
@@ -357,6 +373,13 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
       top.commentBefore = null
       if (top.items?.[0]?.key) top.items[0].key.commentBefore = null
     }
+    if (placeholders) {
+      // Cada folha passa a ${NOME_ENV:valor} — a variável de ambiente, se existir, sobrepõe-se; senão vale o default.
+      for (const [key, e] of yamlKeys(doc.toString())) {
+        const w = withPlaceholder(key, doc.getIn(e.path))
+        if (w !== undefined) doc.setIn(e.path, w)
+      }
+    }
     content = header.join('\n') + '\n' + doc.toString()
   } else {
     const lines = base.text.split(/\r?\n/)
@@ -366,6 +389,14 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
       const line = `${o.key}=${display(o.value)}`
       if (i >= 0) lines[i] = line
       else lines.push(line)
+    }
+    if (placeholders) {
+      for (let i = 0; i < lines.length; i++) {
+        const m = lines[i].match(/^(\s*)([^#!\s][^=:]*?)\s*([=:])\s*(.*)$/)
+        if (!m) continue
+        const w = withPlaceholder(m[2].trim(), m[4])
+        if (w !== undefined) lines[i] = `${m[1]}${m[2].trim()}${m[3]}${w}`
+      }
     }
     content = header.join('\n') + '\n' + lines.join('\n')
   }
