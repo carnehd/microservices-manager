@@ -85,7 +85,12 @@ async function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<str
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string }
     if (err.code === 'ENOENT') { logCmd(`"${cmd}" not found in PATH`, 'err'); throw new Error(`"${cmd}" not found in PATH — install Podman (or set another command in Settings)`) }
-    const msg = (err.stderr || err.stdout || err.message || '').trim().split('\n').filter(Boolean).pop() ?? 'unknown error'
+    let msg = (err.stderr || err.stdout || err.message || '').trim().split('\n').filter(Boolean).pop() ?? 'unknown error'
+    // Erro com assinatura de proxy (inalcançável, a bloquear o registo, a pedir autenticação): diz qual estava em uso e onde corrigir.
+    const px = proxyEnv().HTTPS_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy
+    if (/proxyconnect|Filtered|Proxy Authentication|407/i.test(msg) || (px && /no such host|Temporary failure in name resolution|connection refused/i.test(msg))) {
+      msg += ` — proxy problem (HTTPS_PROXY=${px ?? 'not set'}): fix it in Settings → Proxy, then Stop/Start the machine so the VM picks it up; note the first pull right after a restart can still use the previous proxy — retry once`
+    }
     logCmd(msg, 'err')
     throw new Error(msg)
   }
