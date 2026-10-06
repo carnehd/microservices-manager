@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { AppSettings, ContainerInfo, PubsubDetected, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult } from '../../../shared/types'
 import { api } from '../api'
 import { ConsoleOut } from './common'
@@ -68,7 +68,6 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   const [cfgOpen, setCfgOpen] = useState(false)
   const [emuLog, setEmuLog] = useState('')
   const appendLog = (t: string) => setEmuLog((p) => (p ? p + '\n' : '') + t)
-  const didStartup = useRef(false)
   // O emulador responde ao REST? (independente de haver um container local a correr — ex.: emulador remoto/partilhado)
   const [reachable, setReachable] = useState(false)
   // Criar um container novo (msm-pubsub) ou apontar para um já existente.
@@ -246,29 +245,6 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
   useEffect(() => {
     void loadInfo()
   }, [loadInfo])
-  // Ao entrar na página: mostra na consola só os comandos básicos para configurar o container
-  // (engine + estado do container). Sem `logs` — no PC da empresa os logs são lentos; usa o botão ⟳ logs.
-  useEffect(() => {
-    if (didStartup.current) return
-    didStartup.current = true
-    void (async () => {
-      const e = await api.containers.engine().catch(() => null)
-      const cn = e?.command ?? 'podman'
-      const isDocker = /docker/i.test(cn)
-      appendLog(`--- loading pub/sub page (${new Date().toLocaleTimeString()}) ---`)
-      const seq: string[][] = [['version'], ...(isDocker ? [] : [['machine', 'list']]), ['ps', '-a']]
-      for (const args of seq) {
-        appendLog(`$ ${cn} ${args.join(' ')}`)
-        try {
-          const r = await api.containers.exec(args)
-          const out = [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n')
-          appendLog(`${out || '(no output)'}\n— exit ${r.code} · ${r.ms} ms`)
-        } catch (err) {
-          appendLog(`✗ ${err instanceof Error ? err.message : String(err)}`)
-        }
-      }
-    })()
-  }, [])
   useEffect(() => {
     if (mode === 'existing') void loadContainers()
   }, [mode, loadContainers])

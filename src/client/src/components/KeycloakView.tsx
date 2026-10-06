@@ -50,7 +50,12 @@ export function KeycloakView({
     if (!active) void refreshInfo() // depois de build/deploy a lista de providers pode ter mudado
   }, [active, refreshInfo])
   useEffect(() => {
-    const t = setInterval(() => void refreshInfo(true), 5000)
+    let running = false // não acumular pedidos quando o motor está lento
+    const t = setInterval(() => {
+      if (running) return
+      running = true
+      void Promise.resolve(refreshInfo(true)).finally(() => { running = false })
+    }, 5000)
     return () => clearInterval(t)
   }, [refreshInfo])
 

@@ -124,8 +124,11 @@ export default function App() {
   // Bolinhas de estado da navegação (Keycloak / Containers / Redis / Pub/Sub): verde a correr, vermelho erro, sem cor parado.
   useEffect(() => {
     let alive = true
+    let running = false // evita acumular pedidos quando o motor está lento (PC da empresa)
     const tick = async (): Promise<void> => {
-      const [kc, cts, rd, ps] = await Promise.allSettled([api.kcInfo(true), api.containers.list(true), api.redis.info(true), api.pubsub.info(true)])
+      if (running) return
+      running = true
+      const [kc, cts, rd, ps] = await Promise.allSettled([api.kcInfo(true), api.containers.list(true), api.redis.info(true), api.pubsub.info(true)]).finally(() => { running = false })
       if (!alive) return
       const keycloak: NavState = kc.status === 'fulfilled' ? (kc.value.container?.running ? 'running' : kc.value.engineError ? 'error' : 'none') : 'error'
       const containers: NavState = cts.status === 'fulfilled' ? (cts.value.some((c) => c.state === 'running') ? 'running' : 'none') : 'error'
