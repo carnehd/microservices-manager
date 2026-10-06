@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AppSettings, GitSummary, ProcState, ScanResult, ServiceSettings, StartMode } from '../../shared/types'
-import { api } from './api'
+import { api, POLL } from './api'
 import { useLogs } from './hooks'
 import { ContainersView } from './components/ContainersView'
 import { KeycloakView } from './components/KeycloakView'
@@ -128,7 +128,8 @@ export default function App() {
     const tick = async (): Promise<void> => {
       if (running) return
       running = true
-      const [kc, cts, rd, ps] = await Promise.allSettled([api.kcInfo(true), api.containers.list(true), api.redis.info(true), api.pubsub.info(true)]).finally(() => { running = false })
+      // POLL = de fundo (silencioso) + fresh: é isto que mantém a cache do servidor atualizada
+      const [kc, cts, rd, ps] = await Promise.allSettled([api.kcInfo(POLL), api.containers.list(POLL), api.redis.info(POLL), api.pubsub.info(POLL)]).finally(() => { running = false })
       if (!alive) return
       const keycloak: NavState = kc.status === 'fulfilled' ? (kc.value.container?.running ? 'running' : kc.value.engineError ? 'error' : 'none') : 'error'
       const containers: NavState = cts.status === 'fulfilled' ? (cts.value.some((c) => c.state === 'running') ? 'running' : 'none') : 'error'

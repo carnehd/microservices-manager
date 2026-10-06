@@ -6,6 +6,15 @@ import { join } from 'path'
 import { promisify } from 'util'
 import type { ContainerExecResult, ContainerInfo, EngineInfo, ImageInfo, MachineInfo } from '../shared/types'
 import { logCmd } from './cmdlog'
+import { invalidateCache } from './cache'
+
+// Verbos só de leitura: não alteram containers, logo não invalidam a cache das listagens.
+const READ_VERBS = new Set(['version', 'ps', 'images', 'image', 'inspect', 'logs', 'info', 'port', 'top', 'stats', 'system', 'volume', 'network', 'healthcheck', 'df'])
+const MACHINE_READ = new Set(['list', 'info', 'inspect'])
+function isReadOnly(args: string[]): boolean {
+  if (args[0] === 'machine') return MACHINE_READ.has(args[1] ?? '')
+  return READ_VERBS.has(args[0] ?? '')
+}
 
 const execFileP = promisify(execFile)
 
@@ -43,6 +52,7 @@ async function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<str
   const line = `${cmd} ${args.join(' ')}`
   cmdTrace.getStore()?.push(line)
   logCmd(line, 'cmd')
+  if (!isReadOnly(args)) invalidateCache() // start/stop/rm/run/machine…: as listagens em cache ficam desatualizadas
   const t0 = Date.now()
   try {
     const { stdout } = await execFileP(cmd, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, windowsHide: true, env: podmanEnv() })

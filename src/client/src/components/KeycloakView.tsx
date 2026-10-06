@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AppSettings, JarInfo, KeycloakInfo, ProcState, ScanResult } from '../../../shared/types'
-import { api } from '../api'
+import { api, FRESH, POLL, type ReqOpts } from '../api'
 import type { LogsApi } from '../hooks'
 import { KcAdminPanel } from './KcAdminPanel'
 import { LogView } from './LogView'
@@ -40,7 +40,8 @@ export function KeycloakView({
   const active = running || isActive(state)
   const adminUrl = `http://localhost:${kc.httpPort}/admin/`
 
-  const refreshInfo = useCallback((bg = false) => api.kcInfo(bg).then(setInfo).catch(fail), [fail])
+  // Sem opções lê a cache do servidor (entrar na página é instantâneo); FRESH/POLL re-correm os comandos.
+  const refreshInfo = useCallback((o?: ReqOpts) => api.kcInfo(o).then(setInfo).catch(fail), [fail])
   const loadLogs = logs.load
   useEffect(() => {
     void refreshInfo()
@@ -54,7 +55,7 @@ export function KeycloakView({
     const t = setInterval(() => {
       if (running) return
       running = true
-      void Promise.resolve(refreshInfo(true)).finally(() => { running = false })
+      void Promise.resolve(refreshInfo(POLL)).finally(() => { running = false })
     }, 5000)
     return () => clearInterval(t)
   }, [refreshInfo])
@@ -137,6 +138,7 @@ export function KeycloakView({
         )}
         {running && <button className="btn btn-danger" disabled={!!busy || state?.status === 'stopping'} onClick={() => run('stop', api.kcStop, () => void refreshInfo())}>{busy === 'stop' ? 'Stopping…' : '■ Stop'}</button>}
         <button className="btn" disabled={!info?.valid || !!busy || state?.status === 'stopping'} onClick={() => run('restart', api.kcRestart, () => void refreshInfo())}>⟳ Restart</button>
+        <button className="btn" disabled={!!busy} onClick={() => void refreshInfo(FRESH)} title="Re-run the podman commands that check the Keycloak container">⟳ Refresh</button>
         <button className="btn" disabled={!info?.valid || !!busy} title="Deletes and recreates the container with the current image/folders/port from Settings (data stays on disk)"
           onClick={() => { if (confirm(`Recreate the container ${kc.containerName}? Data (H2) and providers stay on disk.`)) void run('recreate', api.kcRecreate, () => void refreshInfo()) }}>Recreate container</button>
         <span className="grow" />

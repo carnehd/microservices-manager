@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ContainerInfo, EngineInfo, ImageInfo, ProcState } from '../../../shared/types'
-import { api } from '../api'
+import { api, FRESH, POLL, type ReqOpts } from '../api'
 import type { LogsApi } from '../hooks'
 import { LogView } from './LogView'
 import { Badge, ConsoleOut, StatusDot, isActive } from './common'
@@ -64,8 +64,8 @@ export function ContainersView({
       const msg = await api.containers.machine(name, action)
       appendConsole(`${msg || '(done)'}`)
       notify(`Machine ${name} ${action === 'start' ? 'started' : 'stopped'}`, 'success')
-      await refresh(true)
-      await refreshEngine()
+      await refresh(POLL)
+      await refreshEngine(POLL)
     } catch (e) {
       appendConsole(`✗ ${e instanceof Error ? e.message : String(e)}`)
       fail(e)
@@ -74,24 +74,25 @@ export function ContainersView({
     }
   }
 
-  const refreshEngine = useCallback(async () => {
+  // Sem opções lê a cache do servidor (entrar na página é instantâneo, 0 comandos podman).
+  // FRESH (botão Refresh) re-corre os comandos em primeiro plano; POLL (intervalo) em silêncio.
+  const refreshEngine = useCallback(async (o?: ReqOpts) => {
     try {
-      setEngine(await api.containers.engine())
+      setEngine(await api.containers.engine(o))
     } catch (e) {
       fail(e)
     }
   }, [fail])
 
-  const refresh = useCallback(async (quiet = false) => {
+  const refresh = useCallback(async (o?: ReqOpts) => {
     try {
-      // quiet = refresh periódico (fundo): não aparece na consola comum
-      if (tab === 'images') setImages(await api.containers.images(quiet))
-      else setContainers(await api.containers.list(quiet))
+      if (tab === 'images') setImages(await api.containers.images(o))
+      else setContainers(await api.containers.list(o))
       setError(null)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       setError(msg)
-      if (!quiet) void refreshEngine()
+      if (!o?.bg) void refreshEngine(o)
     }
   }, [tab, refreshEngine])
 
@@ -105,7 +106,7 @@ export function ContainersView({
     const t = setInterval(() => {
       if (running) return
       running = true
-      void refresh(true).finally(() => { running = false })
+      void refresh(POLL).finally(() => { running = false })
     }, REFRESH_MS)
     return () => clearInterval(t)
   }, [refresh])
@@ -115,8 +116,9 @@ export function ContainersView({
     try {
       await fn()
       if (done) notify(done, 'success')
-      await refresh(true)
-      await refreshEngine()
+      // a ação invalidou a cache no servidor; POLL = re-ler em silêncio (a própria ação já apareceu no Terminal)
+      await refresh(POLL)
+      await refreshEngine(POLL)
     } catch (e) {
       fail(e)
     } finally {
@@ -170,7 +172,7 @@ export function ContainersView({
         ) : (
           <button className="btn" disabled={!!busy} onClick={() => void runMachine('stop', machine.name)}>{busy === 'machine' ? 'Stopping the machine…' : '■ Stop machine'}</button>
         ))}
-        <button className="btn" disabled={!!busy} onClick={() => { void refresh(); void refreshEngine() }}>⟳ Refresh</button>
+        <button className="btn" disabled={!!busy} onClick={() => { void refresh(FRESH); void refreshEngine(FRESH) }} title="Re-run the podman commands (version, machine list, ps)">⟳ Refresh</button>
         <label className="check"><input type="checkbox" checked={onlyRunning} onChange={(e) => setOnlyRunning(e.target.checked)} /> only running</label>
         <span className="grow" />
         <span className="muted small">refreshes every {REFRESH_MS / 1000} s</span>

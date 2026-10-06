@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AppSettings, ContainerInfo, PubsubDetected, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult } from '../../../shared/types'
-import { api } from '../api'
+import { api, FRESH, type ReqOpts } from '../api'
 import { ConsoleOut } from './common'
 
 // Porta do host mapeada para a porta 8085 do emulador num container existente (ex.: "0.0.0.0:8086->8085/tcp").
@@ -93,7 +93,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
       if (hp) setPort(String(hp))
       appendLog(`→ using existing container "${c.name}"${hp ? ` (host port ${hp} → 8085)` : ''}`)
       notify(`Now using container "${c.name}"`, 'success')
-      await loadInfo(true)
+      await loadInfo({ ...FRESH, log: true })
       await loadEntities()
     } catch (e) {
       fail(e)
@@ -213,11 +213,12 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
     }
   }
 
-  const loadInfo = useCallback(async (logCmds = false): Promise<PubSubInfo | null> => {
+  // Sem opções lê a cache do servidor (entrar é instantâneo). FRESH re-corre os comandos; log mostra-os na consola do card.
+  const loadInfo = useCallback(async (o?: ReqOpts & { log?: boolean }): Promise<PubSubInfo | null> => {
     try {
-      const i = await api.pubsub.info()
+      const i = await api.pubsub.info(o)
       setInfo(i)
-      if (logCmds && i.commands?.length) {
+      if (o?.log && i.commands?.length) {
         setEmuLog((p) => (p ? p + '\n' : '')
           + `--- checking emulator state (${new Date().toLocaleTimeString()}) ---\n`
           + i.commands!.map((c) => `$ ${c}`).join('\n'))
@@ -419,7 +420,7 @@ export function PubSubView({ settings, scan, onSaveSettings, notify, fail }: {
               {busy === 'start' ? 'Starting…' : info.exists ? '▶ Start' : '▶ Create and start'}
             </button>
             <button className="btn btn-danger" disabled={busy !== null || !info.running} onClick={() => void run('stop', api.pubsub.stop)}>■ Stop</button>
-            <button className="btn" disabled={busy !== null} onClick={() => { void loadInfo(true); if (info.running) void loadEntities() }}>⟳ Check</button>
+            <button className="btn" disabled={busy !== null} onClick={() => { void loadInfo({ ...FRESH, log: true }); if (info.running) void loadEntities() }} title="Re-run the podman commands that check the emulator state">⟳ Refresh</button>
           </div>
           {!info.engineOk && <p className="muted small">Container engine unavailable{info.error ? `: ${info.error}` : ''}.</p>}
           <div className="row" style={{ marginTop: 8 }}>

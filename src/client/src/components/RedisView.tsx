@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { RedisInfo, RedisKeyMeta, RedisKeyValue } from '../../../shared/types'
-import { api } from '../api'
+import { api, FRESH, type ReqOpts } from '../api'
 import { Badge } from './common'
 
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
@@ -38,9 +38,10 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
   const [cmdOut, setCmdOut] = useState<string>('')
   const [showNew, setShowNew] = useState(false)
 
-  const refreshInfo = useCallback(async () => {
+  // Sem opções lê a cache do servidor (entrar é instantâneo); FRESH re-corre os comandos.
+  const refreshInfo = useCallback(async (o?: ReqOpts) => {
     try {
-      setInfo(await api.redis.info())
+      setInfo(await api.redis.info(o))
     } catch (e) {
       fail(e)
     }
@@ -101,10 +102,11 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
     try {
       const r = await api.redis.startContainer()
       notify(typeof r === 'string' ? r : 'Redis container started', 'success')
-      let next = await api.redis.info()
+      // à espera do estado mudar: tem de ignorar a cache em cada tentativa
+      let next = await api.redis.info(FRESH)
       for (let i = 0; i < 16 && !next.connected; i++) {
         await new Promise((res) => setTimeout(res, 500))
-        next = await api.redis.info()
+        next = await api.redis.info(FRESH)
       }
       setInfo(next)
       if (next.connected) await search('0')
@@ -153,7 +155,7 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
             {busy === 'container' ? 'Starting…' : ct.exists ? `▶ Start container ${ct.name}` : `▶ Create and start container ${ct.name}`}
           </button>
         )}
-        <button className="btn" disabled={!!busy} onClick={() => { void refreshInfo(); void search('0') }}>⟳ Refresh</button>
+        <button className="btn" disabled={!!busy} onClick={() => { void refreshInfo(FRESH); void search('0') }} title="Re-run the commands that check Redis and its container">⟳ Refresh</button>
         <button className="btn" disabled={!connected} onClick={() => setShowNew((v) => !v)}>+ New key</button>
         <span className="grow" />
         <button className="btn btn-danger" disabled={!connected || !!busy}

@@ -4,6 +4,7 @@ import { basename, delimiter, join } from 'path'
 import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type SrDbInfo, type StartMode } from '../shared/types'
 import { addSseClient, broadcast } from './events'
 import { recentCmds, withSilent } from './cmdlog'
+import { cached, invalidateCache } from './cache'
 import { listDirs, openPath, openTerminal } from './fsapi'
 import { searchInServices } from './search'
 import { containerAction, containerState, engineInfo, ensureContainer, execContainerCommand, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
@@ -389,6 +390,8 @@ const h = (fn: Handler) => (req: Request, res: Response): Promise<void> => {
   return req.get('x-msm-background') === '1' ? withSilent(invoke) : invoke()
 }
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+// ?fresh=1 → ignora a cache e re-corre os comandos (botão Refresh / pollers de fundo); sem isso devolve a última resposta.
+const fresh = (req: Request): boolean => req.query.fresh === '1'
 // Express 5 tipa params como string | string[]
 const param = (req: Request, name: string): string => str(req.params[name])
 
@@ -400,12 +403,13 @@ apiRouter.get('/console/log', h(() => recentCmds()))
 apiRouter.get('/settings', h(() => getSettings()))
 apiRouter.put('/settings', h(async (req) => {
   adminCache = null
+  invalidateCache() // nomes de containers/portas/comando podem ter mudado: as leituras em cache ficam inválidas
   await redisOps.reset()
   return saveSettings(req.body as Partial<AppSettings>)
 }))
 
 // Pub/Sub local (emulador do Google Cloud em container gerido pela app)
-apiRouter.get('/pubsub/info', h(() => pubsubInfo()))
+apiRouter.get('/pubsub/info', h((req) => cached('pubsub:info', fresh(req), () => pubsubInfo())))
 apiRouter.post('/pubsub/start', h(() => startPubsub()))
 apiRouter.post('/pubsub/stop', h(() => containerAction(containerCmd(), 'stop', getSettings().pubsub.containerName)))
 apiRouter.get('/pubsub/topics', h((req) => listTopics(str(req.query.project) || undefined)))
@@ -604,7 +608,7 @@ apiRouter.post('/services/:id/envs/profile', h(async (req) => {
   return result
 }))
 
-apiRouter.get('/kc/info', h(() => kcInfoFull()))
+apiRouter.get('/kc/info', h((req) => cached('kc:info', fresh(req), () => kcInfoFull())))
 apiRouter.post('/kc/start', h(() => startKeycloak()))
 apiRouter.post('/kc/stop', h(() => stopKeycloak()))
 apiRouter.post('/kc/restart', h(() => restartKeycloak()))
@@ -687,10 +691,10 @@ apiRouter.post('/services/:id/git/push', h((req) => gitOps.push(findService(para
 // ---- Containers (Podman/Docker) ----
 const CONTAINER_ACTIONS = new Set<ContainerAction>(['start', 'stop', 'restart', 'remove', 'pause', 'unpause'])
 
-apiRouter.get('/containers/engine', h(() => engineInfo(containerCmd())))
+apiRouter.get('/containers/engine', h((req) => cached('containers:engine', fresh(req), () => engineInfo(containerCmd()))))
 apiRouter.post('/containers/exec', h((req) => execContainerCommand(containerCmd(), Array.isArray(req.body?.args) ? req.body.args : [])))
-apiRouter.get('/containers', h(() => listContainers(containerCmd())))
-apiRouter.get('/containers/images', h(() => listImages(containerCmd())))
+apiRouter.get('/containers', h((req) => cached('containers:list', fresh(req), () => listContainers(containerCmd()))))
+apiRouter.get('/containers/images', h((req) => cached('containers:images', fresh(req), () => listImages(containerCmd()))))
 apiRouter.delete('/containers/images/:id', h((req) => removeImage(containerCmd(), param(req, 'id'), req.query.force === '1')))
 apiRouter.post('/containers/machine/:name/:action', h((req) => {
   const action = param(req, 'action')
@@ -715,7 +719,7 @@ apiRouter.get('/diagnostics', h(() => runDiagnostics({ settings: getSettings(), 
 
 // ---- Redis ----
 const redisCfg = () => getSettings().redis
-apiRouter.get('/redis/info', h(async () => {
+apiRouter.get('/redis/info', h((req) => cached('redis:info', fresh(req), async () => {
   const info = await redisOps.info(redisCfg())
   try {
     info.container = { name: redisCfg().containerName, ...(await containerState(containerCmd(), redisCfg().containerName)) }
@@ -723,7 +727,7 @@ apiRouter.get('/redis/info', h(async () => {
     /* motor de containers indisponível */
   }
   return info
-}))
+})))
 apiRouter.get('/redis/keys', h((req) => redisOps.scan(redisCfg(), str(req.query.pattern) || '*', str(req.query.cursor) || '0', Number(req.query.count) || 200)))
 apiRouter.get('/redis/key', h((req) => redisOps.getKey(redisCfg(), str(req.query.key))))
 apiRouter.put('/redis/key', h((req) => redisOps.setString(redisCfg(), str(req.body?.key), str(req.body?.value), Number(req.body?.ttl) || undefined)))
