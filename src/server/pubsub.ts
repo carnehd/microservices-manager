@@ -1,5 +1,6 @@
 import type { PubSubInbox, PubSubInfo, PubSubMessage, PubSubSettings, PubSubStoredMessage, PubSubSubscription, PubSubTopic } from '../shared/types'
 import { containerState, engineInfo, ensureContainer, traceCommands } from './containers'
+import { logCmd } from './cmdlog'
 import { getSettings } from './settings'
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_.~%+-]{2,254}$/ // nomes de tópico/subscrição do Pub/Sub
@@ -60,14 +61,24 @@ export async function startPubsub(): Promise<string> {
 
 async function emu(path: string, init?: RequestInit, project?: string): Promise<unknown> {
   const p = cfg()
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const proj = (project || p.projectId).trim()
+  // Mostra a operação REST na consola comum (criar tópico/subscrição, publicar, etc.).
+  logCmd(`${method} /v1/projects/${proj}${path}`, 'cmd')
+  const t0 = Date.now()
   let res: Response
   try {
     res = await fetch(`${baseUrl(p, project)}${path}`, init)
   } catch (e) {
+    logCmd(`emulator not responding at localhost:${p.port}`, 'err')
     throw new Error(`the emulator is not responding at localhost:${p.port} — start Pub/Sub first (${e instanceof Error ? e.message : String(e)})`)
   }
   const text = await res.text()
-  if (!res.ok) throw new Error(`Pub/Sub responded ${res.status}${text ? ` — ${text.slice(0, 200)}` : ''}`)
+  if (!res.ok) {
+    logCmd(`${res.status}${text ? ` — ${text.slice(0, 120)}` : ''}`, 'err')
+    throw new Error(`Pub/Sub responded ${res.status}${text ? ` — ${text.slice(0, 200)}` : ''}`)
+  }
+  logCmd(`${res.status} · ${Date.now() - t0} ms`, 'ok')
   return text ? JSON.parse(text) : null
 }
 
