@@ -37,6 +37,9 @@ export function SettingsView({
       mavenSettingsFile: form.mavenSettingsFile?.trim() || undefined,
       baseDebugPort: Number(form.baseDebugPort) || 5005,
       containerCommand: form.containerCommand?.trim() || undefined,
+      httpProxy: form.httpProxy?.trim() || undefined,
+      httpsProxy: form.httpsProxy?.trim() || undefined,
+      noProxy: form.noProxy?.trim() || undefined,
       keycloak: {
         ...form.keycloak,
         httpPort: Number(form.keycloak.httpPort) || 8080,
@@ -118,6 +121,17 @@ export function SettingsView({
               <label>
                 Container command (Containers tab)
                 <input className="input mono" value={form.containerCommand ?? ''} onChange={(e) => set('containerCommand', e.target.value)} placeholder="podman (or docker)" />
+              </label>
+              <label>
+                Proxy for podman/docker — HTTP_PROXY / HTTPS_PROXY (image pulls; the podman machine picks it up on the next <b>Start machine</b>)
+                <div className="row">
+                  <input className="input mono grow" value={form.httpProxy ?? ''} onChange={(e) => set('httpProxy', e.target.value)} placeholder="http://proxy.company.com:3128 (empty = no proxy)" />
+                  <input className="input mono grow" value={form.httpsProxy ?? ''} onChange={(e) => set('httpsProxy', e.target.value)} placeholder="HTTPS_PROXY (empty = same as HTTP_PROXY)" />
+                </div>
+              </label>
+              <label>
+                NO_PROXY — hosts that bypass the proxy
+                <input className="input mono" value={form.noProxy ?? ''} onChange={(e) => set('noProxy', e.target.value)} placeholder="empty = localhost,127.0.0.1,::1,host.containers.internal,host.docker.internal" />
               </label>
               <label>
                 Base debug port (each service uses base + index; can be changed per service)

@@ -7,6 +7,7 @@ import { promisify } from 'util'
 import type { ContainerExecResult, ContainerInfo, EngineInfo, ImageInfo, MachineInfo } from '../shared/types'
 import { logCmd } from './cmdlog'
 import { invalidateCache } from './cache'
+import { getSettings } from './settings'
 
 // Verbos só de leitura: não alteram containers, logo não invalidam a cache das listagens.
 const READ_VERBS = new Set(['version', 'ps', 'images', 'image', 'inspect', 'logs', 'info', 'port', 'top', 'stats', 'system', 'volume', 'network', 'healthcheck', 'df'])
@@ -30,9 +31,9 @@ export async function traceCommands<T>(fn: () => Promise<T>): Promise<{ result: 
 // pode ter "credsStore": "desktop", fazendo o podman invocar o helper docker-credential-desktop
 // (que não existe) e falhar o pull com "erro de credenciais". Apontamos o DOCKER_CONFIG/
 // REGISTRY_AUTH_FILE para uma config vazia e isolada → pulls anónimos, sem cred helper.
-let podmanEnvCache: NodeJS.ProcessEnv | null = null
-function podmanEnv(): NodeJS.ProcessEnv {
-  if (podmanEnvCache) return podmanEnvCache
+let authPathsCache: { dir: string; auth: string } | null | undefined
+function authPaths(): { dir: string; auth: string } | null {
+  if (authPathsCache !== undefined) return authPathsCache
   try {
     const dir = join(homedir(), '.config', 'microservices-manager', 'podman-auth')
     mkdirSync(dir, { recursive: true })
@@ -40,16 +41,39 @@ function podmanEnv(): NodeJS.ProcessEnv {
     const auth = join(dir, 'auth.json')
     if (!existsSync(cfg)) writeFileSync(cfg, '{"auths":{}}')
     if (!existsSync(auth)) writeFileSync(auth, '{"auths":{}}')
-    podmanEnvCache = { ...process.env, DOCKER_CONFIG: dir, REGISTRY_AUTH_FILE: auth }
+    authPathsCache = { dir, auth }
   } catch {
-    podmanEnvCache = { ...process.env }
+    authPathsCache = null
   }
-  return podmanEnvCache
+  return authPathsCache
+}
+
+// Proxy (Settings): o ÚNICO sítio onde entra é no ambiente dos comandos podman/docker. O podman usa-o nos pulls
+// e copia-o para a VM da máquina ao arrancar (`machine start`). Nunca é aplicado aos pedidos HTTP da própria app
+// (Pub/Sub, Keycloak, Grafana são locais) — por isso o NO_PROXY por omissão cobre os endereços locais.
+export const DEFAULT_NO_PROXY = 'localhost,127.0.0.1,::1,host.containers.internal,host.docker.internal'
+export function proxyEnv(): Record<string, string> {
+  const s = getSettings()
+  const http = s.httpProxy?.trim() || s.httpsProxy?.trim() || ''
+  const https = s.httpsProxy?.trim() || http
+  if (!https) return {}
+  const no = s.noProxy?.trim() || DEFAULT_NO_PROXY
+  return { HTTP_PROXY: http, http_proxy: http, HTTPS_PROXY: https, https_proxy: https, NO_PROXY: no, no_proxy: no }
+}
+/** Linha do comando como aparece no Terminal: com o proxy à frente quando está definido, para se ver que foi usado. */
+function cmdLine(cmd: string, args: string[]): string {
+  const px = proxyEnv().HTTPS_PROXY
+  return `${px ? `HTTPS_PROXY=${px} ` : ''}${cmd} ${args.join(' ')}`
+}
+
+function podmanEnv(): NodeJS.ProcessEnv {
+  const a = authPaths()
+  return { ...process.env, ...(a ? { DOCKER_CONFIG: a.dir, REGISTRY_AUTH_FILE: a.auth } : {}), ...proxyEnv() }
 }
 
 /** Corre o comando e devolve stdout; erros trazem o stderr do podman/docker (mensagens úteis). */
 async function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<string> {
-  const line = `${cmd} ${args.join(' ')}`
+  const line = cmdLine(cmd, args)
   cmdTrace.getStore()?.push(line)
   logCmd(line, 'cmd')
   if (!isReadOnly(args)) invalidateCache() // start/stop/rm/run/machine…: as listagens em cache ficam desatualizadas
@@ -77,7 +101,7 @@ export async function execContainerCommand(cmd: string, args: string[]): Promise
   if (!clean.length) throw new Error('No command given')
   if (!EXEC_ALLOWED.has(clean[0])) throw new Error(`Command "${clean[0]}" is not allowed in the console (read-only commands only)`)
   for (const a of clean) if (!EXEC_ARG_RE.test(a)) throw new Error(`Invalid argument: ${a}`)
-  const command = `${cmd} ${clean.join(' ')}`
+  const command = cmdLine(cmd, clean)
   logCmd(command, 'cmd')
   const start = Date.now()
   try {

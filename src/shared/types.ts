@@ -249,6 +249,10 @@ export interface AppSettings {
   baseDebugPort: number
   /** Comando do motor de containers: podman (omissão) ou docker */
   containerCommand?: string
+  /** Proxy passado (como HTTP_PROXY/HTTPS_PROXY/NO_PROXY) aos comandos podman/docker — pulls de imagens, arranque da máquina. Vazio = sem proxy. */
+  httpProxy?: string
+  httpsProxy?: string
+  noProxy?: string
   keycloak: KeycloakSettings
   redis: RedisSettings
   postgres: PostgresSettings
