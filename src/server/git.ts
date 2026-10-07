@@ -2,18 +2,23 @@ import { execFile } from 'child_process'
 import { relative, sep } from 'path'
 import { promisify } from 'util'
 import type { GitBranch, GitChange, GitCommit, GitInfo, ServiceInfo } from '../shared/types'
+import { logCmd } from './cmdlog'
 
 const execFileP = promisify(execFile)
 const US = '\x1f'
 
 async function git(cwd: string, args: string[], opts: { okCodes?: number[]; timeoutMs?: number } = {}): Promise<string> {
+  logCmd(`git ${args.join(' ')}   # in ${cwd}`, 'cmd') // Terminal comum (o poller de resumo corre em silêncio)
+  const t0 = Date.now()
   try {
     const { stdout } = await execFileP('git', args, { cwd, timeout: opts.timeoutMs ?? 60_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } })
+    logCmd(`exit 0 · ${Date.now() - t0} ms`, 'ok')
     return stdout
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string; code?: number | string }
-    if (err.code === 'ENOENT') throw new Error('"git" not found in PATH — install Git (https://git-scm.com)')
-    if (typeof err.code === 'number' && opts.okCodes?.includes(err.code)) return err.stdout ?? ''
+    if (err.code === 'ENOENT') { logCmd('"git" not found in PATH', 'err'); throw new Error('"git" not found in PATH — install Git (https://git-scm.com)') }
+    if (typeof err.code === 'number' && opts.okCodes?.includes(err.code)) { logCmd(`exit ${err.code} · ${Date.now() - t0} ms`, 'ok'); return err.stdout ?? '' }
+    logCmd((err.stderr || err.message || 'git failed').trim().split('\n').pop() ?? 'git failed', 'err')
     const msg = (err.stderr || err.stdout || err.message || '').trim().split('\n').filter((l) => l && !l.startsWith('hint:')).join(' · ')
     throw new Error(msg || 'unknown git error')
   }

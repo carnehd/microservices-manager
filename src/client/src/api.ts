@@ -86,7 +86,7 @@ export const api = {
   composeEnv: (id: string, body: EnvMix & { force?: boolean; setProfile?: boolean }) => req<EnvComposeResult>('POST', `/api/services/${enc(id)}/envs/compose`, body),
   setEnvProfile: (id: string, profile?: string) => req<{ file: string }>('POST', `/api/services/${enc(id)}/envs/profile`, { profile }),
   git: {
-    summary: () => req<GitSummary>('GET', '/api/git/summary'),
+    summary: (o?: ReqOpts) => req<GitSummary>('GET', '/api/git/summary', undefined, o),
     info: (id: string) => req<GitInfo>('GET', `/api/services/${enc(id)}/git`),
     branches: (id: string) => req<GitBranch[]>('GET', `/api/services/${enc(id)}/git/branches`),
     log: (id: string) => req<GitCommit[]>('GET', `/api/services/${enc(id)}/git/log`),

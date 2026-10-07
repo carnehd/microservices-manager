@@ -7,6 +7,7 @@ import type { AppSettings, DiagItem, DiagReport, ProcState, ScanResult } from '.
 import { engineInfo } from './containers'
 import * as redisOps from './redis'
 import { dataDir } from './settings'
+import { logCmd } from './cmdlog'
 
 const isWin = process.platform === 'win32'
 
@@ -16,17 +17,21 @@ function tryRun(cmd: string, args: string[], timeoutMs = 15_000): Promise<{ out:
     // Sem JAVA_TOOL_OPTIONS (mesmo vazio o java imprime "Picked up JAVA_TOOL_OPTIONS")
     const { JAVA_TOOL_OPTIONS: _ignored, ...env } = process.env
     // Linha única pela shell (evita o aviso DEP0190 de args + shell:true)
+    logCmd([cmd, ...args].join(' '), 'cmd')
+    const t0 = Date.now()
     const child = spawn([cmd, ...args].join(' '), { shell: true, windowsHide: true, env })
     let out = ''
     const timer = setTimeout(() => child.kill(), timeoutMs)
     child.stdout?.on('data', (d) => (out += d))
     child.stderr?.on('data', (d) => (out += d))
-    child.on('error', () => {
+    child.on('error', (e) => {
       clearTimeout(timer)
+      logCmd(e.message, 'err')
       resolve(null)
     })
     child.on('close', (code) => {
       clearTimeout(timer)
+      logCmd(`exit ${code ?? 'null'} · ${Date.now() - t0} ms`, code === 0 ? 'ok' : 'err')
       // "not found" vem como exit 127 (sh) ou 9009 (cmd.exe), com mensagem na saída
       if (code === 127 || code === 9009 || /not found|não é reconhecido|not recognized/i.test(out)) resolve(null)
       else resolve({ out: out.trim(), code })

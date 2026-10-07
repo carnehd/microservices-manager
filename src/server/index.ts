@@ -4,6 +4,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { apiRouter, shutdown } from './api'
 import { dataDir } from './settings'
+import { logCmd } from './cmdlog'
 
 // Nome próprio (não PORT) para não ser apanhado por variáveis PORT que IDEs/terminais definem por defeito
 const PORT = Number(process.env.MSM_PORT) || 3210
@@ -54,6 +55,7 @@ server.on('error', async (err: NodeJS.ErrnoException) => {
 
 function openBrowser(url: string): void {
   const cmd = process.platform === 'win32' ? `start "" "${url}"` : process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`
+  logCmd(cmd, 'cmd')
   exec(cmd, () => {})
 }
 

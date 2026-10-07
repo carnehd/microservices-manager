@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import treeKill from 'tree-kill'
 import { BUILD_MODES, type LogLine, type ProcState, type StartMode } from '../shared/types'
+import { logCmd } from './cmdlog'
 
 export interface StartOptions {
   id: string
@@ -81,6 +82,7 @@ export class ProcessManager extends EventEmitter {
     const isBuild = BUILD_MODES.has(opts.mode)
     this.log(opts.id, 'system', `▶ ${opts.commandLine}`)
     this.log(opts.id, 'system', `  cwd: ${opts.cwd}`)
+    logCmd(`${opts.commandLine}   # ${opts.id} (${opts.mode}) in ${opts.cwd}`, 'cmd') // Terminal comum: Maven run/build, logs -f, …
 
     const child = spawn(opts.commandLine, {
       cwd: opts.cwd,
@@ -110,6 +112,7 @@ export class ProcessManager extends EventEmitter {
       state.endedAt = Date.now()
       state.status = m.stopping || code === 0 ? 'stopped' : 'crashed'
       this.log(opts.id, 'system', `■ terminou (exit=${code ?? 'null'}${signal ? `, signal=${signal}` : ''})`)
+      logCmd(`${opts.id}: exit ${code ?? 'null'}${signal ? ` (${signal})` : ''} · ${Math.round((Date.now() - state.startedAt!) / 1000)} s`, code === 0 || m.stopping ? 'ok' : 'err')
       this.procs.delete(opts.id)
       this.emitState(state)
       for (const w of m.waiters) w(code)

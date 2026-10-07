@@ -96,7 +96,7 @@ export default function App() {
 
   const refreshGit = useCallback(async () => {
     try {
-      setGitSummary(await api.git.summary())
+      setGitSummary(await api.git.summary({ bg: true })) // poller de 15 s: os `git` que corre não aparecem no Terminal
     } catch {
       /* sem git: fica vazio */
     }

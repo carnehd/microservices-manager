@@ -4,6 +4,7 @@ import type { DbInfo, DbServiceInfo, ServiceInfo, SrDbInfo, SrDbStatus, SrTableD
 import { containerState, ensureContainer, listContainers } from './containers'
 import { getSettings } from './settings'
 import { dataDir } from './settings'
+import { logCmd } from './cmdlog'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
 
@@ -15,12 +16,19 @@ function cmd(): string {
   return getSettings().containerCommand?.trim() || 'podman'
 }
 
+// Esconde "PGPASSWORD=…" (passado como -e ao podman exec) antes de mostrar o comando no Terminal.
+const redactPg = (args: string[]): string => args.map((a) => (a.startsWith('PGPASSWORD=') ? 'PGPASSWORD=***' : a)).join(' ')
+
 async function run(args: string[], timeoutMs = 60_000): Promise<string> {
+  logCmd(`${cmd()} ${redactPg(args)}`, 'cmd')
+  const t0 = Date.now()
   try {
     const { stdout } = await execFileP(cmd(), args, { timeout: timeoutMs, windowsHide: true })
+    logCmd(`exit 0 · ${Date.now() - t0} ms`, 'ok')
     return stdout
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string }
+    logCmd((err.stderr || err.message || 'failed').trim().split('\n').filter(Boolean).pop() ?? 'failed', 'err')
     if (err.code === 'ENOENT') throw new Error(`"${cmd()}" not found in PATH`)
     throw new Error((err.stderr || err.stdout || err.message || '').trim().split('\n').filter(Boolean).pop() ?? 'error')
   }
@@ -305,13 +313,16 @@ export async function runSql(db: string, sql: string): Promise<{ output: string;
   return new Promise((resolve) => {
     const { superPassword } = getSettings().postgres
     const pre = superPassword ? ['-e', `PGPASSWORD=${superPassword}`] : []
-    const child = spawn(cmd(), ['exec', '-i', ...pre, containerName, 'psql', '-U', superUser, '-d', db, '-v', 'ON_ERROR_STOP=1'], { windowsHide: true })
+    const psqlArgs = ['exec', '-i', ...pre, containerName, 'psql', '-U', superUser, '-d', db, '-v', 'ON_ERROR_STOP=1']
+    logCmd(`${cmd()} ${redactPg(psqlArgs)}   # ${sql.trim().split('\n')[0].slice(0, 80)}${sql.trim().includes('\n') || sql.trim().length > 80 ? '…' : ''}`, 'cmd')
+    const t0 = Date.now()
+    const child = spawn(cmd(), psqlArgs, { windowsHide: true })
     let out = ''
     const timer = setTimeout(() => child.kill(), 60_000)
     child.stdout.on('data', (d) => (out += d))
     child.stderr.on('data', (d) => (out += d))
-    child.on('error', (e) => { clearTimeout(timer); resolve({ output: e.message, error: true }) })
-    child.on('close', (code) => { clearTimeout(timer); resolve({ output: out.trim() || '(sem output)', error: code !== 0 }) })
+    child.on('error', (e) => { clearTimeout(timer); logCmd(e.message, 'err'); resolve({ output: e.message, error: true }) })
+    child.on('close', (code) => { clearTimeout(timer); logCmd(`exit ${code ?? 'null'} · ${Date.now() - t0} ms`, code === 0 ? 'ok' : 'err'); resolve({ output: out.trim() || '(sem output)', error: code !== 0 }) })
     child.stdin.end(sql)
   })
 }
