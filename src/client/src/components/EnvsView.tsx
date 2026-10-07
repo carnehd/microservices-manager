@@ -77,8 +77,6 @@ export function EnvsView({
     if (q) r = r.filter((k) => k.key.toLowerCase().includes(q) || Object.values(k.values).some((v) => (v ?? '').toLowerCase().includes(q)))
     return r
   }, [allKeys, onlyDiff, sources, search])
-  // Gerar valores como ${NOME_ENV:valor}: a variável de ambiente (se existir) sobrepõe-se, senão vale o default.
-  const [envPlaceholders, setEnvPlaceholders] = useState(true)
   const targetName = target.trim()
   const usedAtStart = !!targetName && settings.profile === targetName
   const ext = info?.files[base]?.slice(info.files[base].lastIndexOf('.')) ?? '.yml'
@@ -92,7 +90,8 @@ export function EnvsView({
     if (!targetName || targetName === base) return
     setBusy(true)
     try {
-      const r = await api.composeEnv(svc.id, { base, target: targetName, choices: {}, values, force, setProfile: true, envPlaceholders })
+      // valores gerados sempre como ${NOME_ENV:valor} (variável de ambiente sobrepõe-se, senão vale o default)
+      const r = await api.composeEnv(svc.id, { base, target: targetName, choices: {}, values, force, setProfile: true })
       setGenerated({ file: r.file, warnings: r.warnings })
       notify(`application-${targetName}${ext} created and set as the startup profile`, 'success')
       await onChanged()
@@ -172,9 +171,6 @@ export function EnvsView({
           <span className="muted small">{rows.length} {rows.length === 1 ? 'variable' : 'variables'}{rows.length < allKeys.length ? ` of ${allKeys.length}` : ''}</span>
           <span className="grow" />
           <label className="check"><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> only differences</label>
-          <label className="check" title="Each value is written as ${ENV_VAR:default}: an environment variable named after the key (e.g. SPRING_DATASOURCE_URL) overrides it; otherwise the default is used">
-            <input type="checkbox" checked={envPlaceholders} onChange={(e) => setEnvPlaceholders(e.target.checked)} /> values as <span className="mono">${'{'}ENV_VAR:default{'}'}</span>
-          </label>
         </div>
         <div className="envs-scroll">
           <table className="grid envs-table">
@@ -185,7 +181,6 @@ export function EnvsView({
                 <th className="env-col-head" title={info.files[env]}>
                   <span className="mono">{env ? `${info.names?.[env] ?? env} — ${info.files[env] ?? ''}` : 'Environment'}</span>
                   {info.k8s.includes(env) && <span className="k8s-tag" title={info.files[env]}>k8s</span>}
-                  <span className="muted small"> · editable</span>
                 </th>
               </tr>
             </thead>
