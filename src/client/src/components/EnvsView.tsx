@@ -45,8 +45,21 @@ export function EnvsView({
     void load()
   }, [load])
 
-  const sources = useMemo(() => (info ? info.profiles.filter((p) => !info.generated.includes(p)) : []), [info])
-  const base = sources.includes('local') ? 'local' : sources[0] ?? ''
+  // Um ficheiro por ambiente: o de k8s tem prioridade; senão o application-<env>. (Gerados pela app ficam de fora.)
+  const sources = useMemo(() => {
+    if (!info) return []
+    const byEnv = new Map<string, string>()
+    for (const id of info.profiles) {
+      if (info.generated.includes(id)) continue
+      const name = info.names?.[id] ?? id
+      const cur = byEnv.get(name)
+      if (!cur || (info.k8s.includes(id) && !info.k8s.includes(cur))) byEnv.set(name, id)
+    }
+    return [...byEnv.values()]
+  }, [info])
+  // Base para gerar o perfil: sempre um application-<env> dos resources (nunca um ficheiro de k8s).
+  const resourceIds = useMemo(() => (info ? info.profiles.filter((p) => !info.generated.includes(p) && !info.k8s.includes(p)) : []), [info])
+  const base = resourceIds.includes('local') ? 'local' : resourceIds[0] ?? ''
   // Ambiente escolhido no dropdown (fallback ao 1º de sources)
   const env = selectedEnv && sources.includes(selectedEnv) ? selectedEnv : sources[0] ?? ''
   const defaults = info?.defaultValues ?? {}
@@ -144,7 +157,7 @@ export function EnvsView({
           {!generated && info.generated.includes(targetName) && <span className="muted small">application-{targetName}{ext} exists — the toggle overwrites it</span>}
           <label className="inline" style={{ marginLeft: 'auto' }}>Environment
             <select className="input mono" value={env} onChange={(e) => setSelectedEnv(e.target.value)} title="Environment file to compare">
-              {sources.map((p) => <option key={p} value={p}>{info.labels[p] ?? p}</option>)}
+              {sources.map((p) => <option key={p} value={p}>{info.names?.[p] ?? p}</option>)}
             </select>
             {info.k8s.includes(env) && <span className="k8s-tag" title={info.files[env]}>k8s</span>}
           </label>
@@ -170,7 +183,7 @@ export function EnvsView({
                 <th>Variable</th>
                 <th>application.yaml (default)</th>
                 <th className="env-col-head" title={info.files[env]}>
-                  <span className="mono">{info.labels[env] || env || 'Environment'}</span>
+                  <span className="mono">{env ? `${info.names?.[env] ?? env} — ${info.files[env] ?? ''}` : 'Environment'}</span>
                   {info.k8s.includes(env) && <span className="k8s-tag" title={info.files[env]}>k8s</span>}
                   <span className="muted small"> · editable</span>
                 </th>

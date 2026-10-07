@@ -267,6 +267,7 @@ export async function listEnvs(svc: ServiceInfo): Promise<EnvsInfo> {
     files: Object.fromEntries(files.map((f) => [f.id, f.file])),
     labels: Object.fromEntries(files.map((f) => [f.id, f.label])),
     generated: files.filter((f) => f.generated).map((f) => f.id),
+    names: Object.fromEntries(files.map((f) => [f.id, f.profile])),
     k8s: files.filter((f) => f.k8s).map((f) => f.id),
     keys: [...keys.values()],
     defaultValues: await readDefaultValues(svc)

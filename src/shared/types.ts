@@ -443,6 +443,8 @@ export interface EnvsInfo {
   labels: Record<string, string>
   /** perfis cujo ficheiro foi gerado pela app (não servem de origem) */
   generated: string[]
+  /** id → nome do ambiente (ex. "dev"), para agrupar vários ficheiros do mesmo ambiente */
+  names: Record<string, string>
   /** perfis cujos valores vieram (também) da pasta k8s */
   k8s: string[]
   keys: EnvKey[]
