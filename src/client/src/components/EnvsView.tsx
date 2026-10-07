@@ -63,6 +63,8 @@ export function EnvsView({
   // Ambiente escolhido no dropdown (fallback ao 1º de sources)
   const env = selectedEnv && sources.includes(selectedEnv) ? selectedEnv : sources[0] ?? ''
   const defaults = info?.defaultValues ?? {}
+  // Só para mostrar: ${VAR:default} → default (o ficheiro mantém o placeholder; ${VAR} sem default fica como está).
+  const resolvePh = (v?: string): string | undefined => v?.replace(/\$\{([^}:]+)(?::([^}]*))?\}/g, (m, _k: string, d?: string) => (d !== undefined ? d : m))
   // Todas as variáveis: as dos ficheiros de ambiente + as do application.yaml base (que podem não existir em nenhum perfil).
   const allKeys = useMemo(() => {
     if (!info) return []
@@ -188,15 +190,15 @@ export function EnvsView({
               {rows.map((r) => {
                 const envVal = r.values[env]
                 const edited = r.key in values
-                const shown = edited ? values[r.key] : (envVal ?? defaults[r.key] ?? '')
+                const shown = edited ? values[r.key] : (resolvePh(envVal ?? defaults[r.key]) ?? '')
                 return (
                   <tr key={r.key}>
                     <td className="mono small">{r.key}</td>
-                    <td className="mono small val-default" title={defaults[r.key] ?? 'does not exist in the base application.yaml'}>{defaults[r.key] ?? '—'}</td>
+                    <td className="mono small val-default" title={defaults[r.key] !== undefined ? `in the file: ${defaults[r.key]}` : 'does not exist in the base application.yaml'}>{resolvePh(defaults[r.key]) ?? '—'}</td>
                     <td className="val-edit">
-                      <input className={`input mono${edited ? ' edited' : ''}`} value={shown} placeholder={envVal ?? defaults[r.key] ?? ''}
+                      <input className={`input mono${edited ? ' edited' : ''}`} value={shown} placeholder={resolvePh(envVal ?? defaults[r.key]) ?? ''}
                         onChange={(e) => setValues((v) => ({ ...v, [r.key]: e.target.value }))}
-                        title={`value for "${info.labels[env] || env}" (used in the generated file)`} />
+                        title={`value for "${info.names?.[env] ?? env}" (used in the generated file)${envVal !== undefined ? ` · in the file: ${envVal}` : ''}`} />
                       {edited && <button className="link small" title="reset to the detected value" onClick={() => reset(r.key)}>↺</button>}
                     </td>
                   </tr>
