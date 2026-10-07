@@ -162,17 +162,17 @@ export function EnvsView({
 
       <section>
         <div className="row">
+          <input className="input mono" style={{ maxWidth: 260 }} placeholder="search variable or value…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {search && <button className="btn btn-sm btn-ghost" onClick={() => setSearch('')} title="clear search">✕</button>}
+          <span className="muted small">{rows.length} {rows.length === 1 ? 'variable' : 'variables'}{rows.length < allKeys.length ? ` of ${allKeys.length}` : ''}</span>
+          <span className="grow" />
+          <label className="check"><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> only differences</label>
           <label className="inline">Environment
             <select className="input mono" value={env} onChange={(e) => setSelectedEnv(e.target.value)} title="Environment file to compare (k8s file first, else application-<env>)">
               {sources.map((p) => <option key={p} value={p}>{info.names?.[p] ?? p}</option>)}
             </select>
             {info.k8s.includes(env) && <span className="k8s-tag" title={info.files[env]}>k8s</span>}
           </label>
-          <input className="input mono" style={{ maxWidth: 260 }} placeholder="search variable or value…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && <button className="btn btn-sm btn-ghost" onClick={() => setSearch('')} title="clear search">✕</button>}
-          <span className="muted small">{rows.length} {rows.length === 1 ? 'variable' : 'variables'}{rows.length < allKeys.length ? ` of ${allKeys.length}` : ''}</span>
-          <span className="grow" />
-          <label className="check"><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> only differences</label>
         </div>
         <div className="envs-scroll">
           <table className="grid envs-table">
