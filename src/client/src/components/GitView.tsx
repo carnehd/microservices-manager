@@ -14,6 +14,8 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
   const [sel, setSel] = useState<GitChange | null>(null)
   const [diff, setDiff] = useState<string>('')
   const [newBranch, setNewBranch] = useState('')
+  // Ramo de onde o novo branch é copiado; por omissão origin/main (senão origin/master, senão o ramo atual).
+  const [fromBranch, setFromBranch] = useState('')
   const [checkoutTarget, setCheckoutTarget] = useState('')
   const [message, setMessage] = useState('')
   const [showRemote, setShowRemote] = useState(false)
@@ -52,6 +54,13 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
     }
   }, [sel, svc.id])
 
+  // Base do novo branch por omissão: origin/main → origin/master → ramo atual. (Hook: tem de ficar antes dos `return` abaixo.)
+  useEffect(() => {
+    if (fromBranch || !branches.length) return
+    const names = branches.map((b) => b.name)
+    setFromBranch(names.includes('origin/main') ? 'origin/main' : names.includes('origin/master') ? 'origin/master' : branches.find((b) => b.current)?.name ?? names[0])
+  }, [branches, fromBranch])
+
   const act = async (label: string, fn: () => Promise<unknown>, done?: string | ((r: unknown) => string)): Promise<void> => {
     setBusy(label)
     try {
@@ -81,6 +90,7 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
   const unstaged = info.changes.filter((c) => c.unstaged)
   const local = branches.filter((b) => !b.remote)
   const remote = branches.filter((b) => b.remote)
+  const createBranch = (): Promise<unknown> => act('branch', () => api.git.createBranch(svc.id, newBranch, fromBranch), () => { setNewBranch(''); return `Branch ${newBranch} created from ${fromBranch} and active` })
   const trimmed = (s: string): string => s.replace(/^\s+/, '')
 
   return (
@@ -163,11 +173,18 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
       {tab === 'branches' && (
         <>
           <section>
-            <h3>New branch (from {info.branch})</h3>
+            <h3>New branch</h3>
             <div className="row">
-              <input className="input mono grow" placeholder="feature/name" value={newBranch} onChange={(e) => setNewBranch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && newBranch.trim() && act('branch', () => api.git.createBranch(svc.id, newBranch), () => { setNewBranch(''); return `Branch ${newBranch} created and active` })} />
-              <button className="btn btn-primary" disabled={!!busy || !newBranch.trim()} onClick={() => act('branch', () => api.git.createBranch(svc.id, newBranch), () => { setNewBranch(''); return `Branch ${newBranch} created and active` })}>Create and switch</button>
+              <input className="input mono grow" placeholder="feature/name" value={newBranch} onChange={(e) => setNewBranch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && newBranch.trim() && void createBranch()} />
+              <label className="inline">from
+                <select className="input mono input-inline" value={fromBranch} onChange={(e) => setFromBranch(e.target.value)} title="Branch the new one is copied from (origin/… = the remote's latest fetched state)">
+                  {remote.length > 0 && <optgroup label="remote">{remote.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</optgroup>}
+                  {local.length > 0 && <optgroup label="local">{local.map((b) => <option key={b.name} value={b.name}>{b.name}{b.current ? ' (current)' : ''}</option>)}</optgroup>}
+                </select>
+              </label>
+              <button className="btn btn-primary" disabled={!!busy || !newBranch.trim() || !fromBranch} onClick={() => void createBranch()}>Create and switch</button>
             </div>
+            {/^(origin|upstream)\//.test(fromBranch) && <p className="muted small">Copied from the remote branch as last fetched — do a <b>Fetch</b> first if it may be stale. The new branch does not track {fromBranch}.</p>}
             {info.changes.length > 0 && <p className="muted small">Uncommitted changes come with you to the new branch.</p>}
           </section>
           <section>

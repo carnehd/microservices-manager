@@ -159,7 +159,11 @@ export async function createBranch(svc: ServiceInfo, name: string, from?: string
   const repo = await repoOf(svc)
   if (!repo) throw new Error('Not a git repository')
   const n = await validBranch(repo.root, name)
-  return git(repo.root, ['checkout', '-b', n, ...(from?.trim() ? [from.trim()] : [])])
+  const base = from?.trim() ?? ''
+  if (base && !/^[\w][\w./-]*$/.test(base)) throw new Error(`Invalid base branch: ${base}`)
+  // Base remota (origin/main): --no-track, senão o novo branch ficava a seguir origin/main e um `git push` iria para o main.
+  const track = /^(origin|upstream)\//.test(base) ? ['--no-track'] : []
+  return git(repo.root, ['checkout', '-b', ...track, n, ...(base ? [base] : [])])
 }
 
 export async function checkout(svc: ServiceInfo, name: string): Promise<string> {
