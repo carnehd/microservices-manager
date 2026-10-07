@@ -245,12 +245,13 @@ export async function stashList(svc: ServiceInfo): Promise<GitStash[]> {
   })
 }
 
-/** Guarda as alterações por commitar (incluindo ficheiros novos) e deixa o working tree limpo. */
-export async function stashSave(svc: ServiceInfo, message: string): Promise<string> {
+/** Guarda alterações por commitar (incluindo ficheiros novos): só `repoPaths` se dados, senão tudo na pasta do serviço. */
+export async function stashSave(svc: ServiceInfo, message: string, repoPaths: string[] = []): Promise<string> {
   const repo = await repoOf(svc)
   if (!repo) throw new Error('Not a git repository')
   const msg = message.trim()
-  return git(repo.root, ['stash', 'push', '-u', ...(msg ? ['-m', msg] : []), ...scope(repo.prefix)])
+  const paths = repoPaths.map((p) => p.trim()).filter(Boolean)
+  return git(repo.root, ['stash', 'push', '-u', ...(msg ? ['-m', msg] : []), ...(paths.length ? ['--', ...paths] : scope(repo.prefix))])
 }
 
 /** apply mantém a entrada no stash; pop remove-a depois de aplicar com sucesso. */

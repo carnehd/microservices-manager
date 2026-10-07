@@ -154,6 +154,8 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
                       </td>
                       <td className="cell-actions">
                         <button className="btn btn-sm" onClick={() => setSel(c)}>Diff</button>
+                        <button className="btn btn-sm" disabled={!!busy} title="Stash only this file (git stash push -u -- <file>); uses the stash message above if filled"
+                          onClick={() => act('stash1', () => api.git.stash(svc.id, stashMsg, [c.repoPath]), () => { setStashMsg(''); return `${c.path} stashed` })}>Stash</button>
                         <button className="btn btn-sm" disabled={!!busy} title={c.untracked ? 'Add to .gitignore (the file stays on disk, never committed)' : 'Add to .gitignore and stop tracking it (git rm --cached — the file stays on disk)'}
                           onClick={() => { if (confirm(`Ignore ${c.path}?\n\nIt is added to the repo's .gitignore${c.untracked ? '' : ' and removed from the index (git rm --cached) — the file stays on disk but will no longer be committed'}.`)) void act('ignore', () => api.git.ignore(svc.id, [{ repoPath: c.repoPath, untracked: c.untracked }]), `${c.path} added to .gitignore`) }}>Ignore</button>
                         <button className="btn btn-sm btn-danger" disabled={!!busy}
