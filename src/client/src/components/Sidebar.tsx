@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react'
 import type { GitSummary, ProcState, ScanResult, ServiceInfo, ServiceKind } from '../../../shared/types'
+import { icons } from '../assets/icons'
 import { StatusDot } from './common'
 
-const GROUPS: Array<{ kind: ServiceKind; title: string }> = [
-  { kind: 'spring-boot', title: 'Microservices' },
-  { kind: 'keycloak-spi', title: 'Keycloak SPIs' },
-  { kind: 'maven-lib', title: 'Other Maven projects' }
+const GROUPS: Array<{ kind: ServiceKind; title: string; short: string }> = [
+  { kind: 'spring-boot', title: 'Microservices', short: 'microservices' },
+  { kind: 'keycloak-spi', title: 'Keycloak SPIs', short: 'SPIs' },
+  { kind: 'maven-lib', title: 'Other Maven projects', short: 'projects' }
 ]
+// Grupos longos mostram só os primeiros N com "View all" (maquete), exceto quando há pesquisa.
+const COLLAPSED_ROWS = 5
 
 export function Sidebar({
   scan, states, gitSummary, kcProviders, favorites, selectedId, onSelect, onToggleFavorite
@@ -16,6 +19,7 @@ export function Sidebar({
 }) {
   const [query, setQuery] = useState('')
   const [asc, setAsc] = useState(true)
+  const [expanded, setExpanded] = useState<Set<ServiceKind>>(new Set())
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -32,23 +36,31 @@ export function Sidebar({
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-toolbar">
-        <input className="input" placeholder="search service…" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <button className="btn btn-sm" onClick={() => setAsc((v) => !v)} title={`sort by name (${asc ? 'A→Z' : 'Z→A'})`}>{asc ? 'A→Z' : 'Z→A'}</button>
+      <div className="sb-search">
+        <img src={icons.search} alt="" width={15} height={15} />
+        <input placeholder="Find a service…" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <button type="button" className="sb-sort" onClick={() => setAsc((v) => !v)} title={`sort by name (${asc ? 'A→Z' : 'Z→A'})`} aria-label={`sort by name (${asc ? 'A→Z' : 'Z→A'})`}>
+          <img src={icons.sortAz} alt="" width={16} height={16} style={{ transform: asc ? undefined : 'scaleY(-1)' }} />
+        </button>
       </div>
       {favItems.length > 0 && (
         <section>
-          <h3>★ Favorites <span className="muted">{favItems.length}</span></h3>
+          <div className="sb-group"><span>Favorites</span><span className="sb-count">{favItems.length}</span></div>
           {favItems.map(row)}
         </section>
       )}
-      {GROUPS.map(({ kind, title }) => {
+      {GROUPS.map(({ kind, title, short }) => {
         const items = filtered.filter((s) => s.kind === kind && !favorites.has(s.id))
         if (!items.length) return null
+        const collapsed = !query && !expanded.has(kind) && items.length > COLLAPSED_ROWS
+        const shown = collapsed ? items.slice(0, COLLAPSED_ROWS) : items
         return (
           <section key={kind}>
-            <h3>{title} <span className="muted">{items.length}</span></h3>
-            {items.map(row)}
+            <div className="sb-group"><span>{title}</span><span className="sb-count">{items.length}</span></div>
+            {shown.map(row)}
+            {collapsed && (
+              <button type="button" className="sb-more" onClick={() => setExpanded((e) => new Set(e).add(kind))}>View all {items.length} {short}</button>
+            )}
           </section>
         )
       })}
@@ -66,6 +78,20 @@ function Row({ svc, state, git, kcProviders, favorite, selected, onClick, onTogg
   const spiLoaded = svc.kind === 'keycloak-spi' && (svc.providerIds?.length ?? 0) > 0 && svc.providerIds!.some((id) => kcProviders.has(id))
   return (
     <div className={`svc-row${selected ? ' selected' : ''}${favorite ? ' is-fav' : ''}`}>
+      <button className="svc-main" onClick={onClick} title={svc.relativePath}>
+        <StatusDot status={state?.status} />
+        <span className="svc-text">
+          <span className="svc-name ellipsis">{svc.name}</span>
+          {git && (
+            <span className="svc-sub ellipsis">
+              <img src={icons.gitBranch11} alt="" width={11} height={11} />
+              <span className="svc-branch" title={`current branch: ${git.branch ?? '?'}`}>{git.branch ?? '?'}</span>
+              {n > 0 ? <span className="svc-changes" title={`${n} change${n === 1 ? '' : 's'} to commit`}>· {n} {n === 1 ? 'change' : 'changes'}</span> : <span className="svc-clean">· no changes</span>}
+            </span>
+          )}
+        </span>
+      </button>
+      {spiLoaded && <span className="svc-kc" title="loaded in Keycloak">KC</span>}
       <span
         className={`svc-star${favorite ? ' on' : ''}`}
         role="button"
@@ -75,19 +101,9 @@ function Row({ svc, state, git, kcProviders, favorite, selected, onClick, onTogg
         aria-pressed={favorite}
         onClick={(e) => { e.stopPropagation(); onToggleFavorite() }}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onToggleFavorite() } }}
-      >{favorite ? '★' : '☆'}</span>
-      <button className="svc-main" onClick={onClick} title={svc.relativePath}>
-        <StatusDot status={state?.status} />
-        <span className="svc-text">
-          <span className="svc-name ellipsis">{svc.name}{spiLoaded && <span className="svc-kc" title="loaded in Keycloak">KC</span>}</span>
-          {git && (
-            <span className="svc-sub ellipsis">
-              <span className="svc-branch" title={`current branch: ${git.branch ?? '?'}`}>⎇ {git.branch ?? '?'}</span>
-              {n > 0 ? <span className="svc-changes" title={`${n} change${n === 1 ? '' : 's'} to commit`}> · {n} {n === 1 ? 'change' : 'changes'}</span> : <span className="svc-clean"> · no changes</span>}
-            </span>
-          )}
-        </span>
-      </button>
+      >
+        <img src={favorite && selected ? icons.starSelected : icons.starFavorite} alt="" width={13} height={13} />
+      </span>
     </div>
   )
 }

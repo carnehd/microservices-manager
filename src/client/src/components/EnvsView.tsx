@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EnvsInfo, ServiceInfo, ServiceSettings } from '../../../shared/types'
 import { api } from '../api'
+import { icons } from '../assets/icons'
+
+// Linhas mostradas por omissão (maquete: "Showing 7 of 26 · View all variables").
+const PREVIEW_ROWS = 7
 
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
 
@@ -27,6 +31,10 @@ export function EnvsView({
   const [values, setValues] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [generated, setGenerated] = useState<{ file: string; warnings: string[] } | null>(null)
+  // Valores já gravados no perfil gerado (para contar "unsaved changes") e vista parcial/total da tabela.
+  const [savedValues, setSavedValues] = useState<Record<string, string>>({})
+  const [showAll, setShowAll] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     try {
@@ -35,11 +43,21 @@ export function EnvsView({
       if (i.mix) {
         setTarget(i.mix.target)
         setValues(i.mix.values ?? {})
+        setSavedValues(i.mix.values ?? {})
       }
     } catch (e) {
       fail(e)
     }
   }, [svc.id, fail])
+
+  // ⌘K / Ctrl+K foca a pesquisa de variáveis (maquete).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); searchRef.current?.focus() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     void load()
@@ -95,6 +113,7 @@ export function EnvsView({
       // valores gerados sempre como ${NOME_ENV:valor} (variável de ambiente sobrepõe-se, senão vale o default)
       const r = await api.composeEnv(svc.id, { base, target: targetName, choices: {}, values, force, setProfile: true })
       setGenerated({ file: r.file, warnings: r.warnings })
+      setSavedValues(values)
       notify(`application-${targetName}${ext} created and set as the startup profile`, 'success')
       await onChanged()
       await load()
@@ -140,76 +159,104 @@ export function EnvsView({
     )
   }
 
+  // Alterações ainda não gravadas no perfil gerado (diferença entre o editado e o último compose).
+  const unsaved = Object.keys({ ...values, ...savedValues }).filter((k) => values[k] !== savedValues[k]).length
+  const filtering = !!search.trim() || onlyDiff
+  const visible = showAll || filtering ? rows : rows.slice(0, PREVIEW_ROWS)
+  const envName = info.names?.[env] ?? env
+  const saveChanges = async (): Promise<void> => {
+    if (!targetName || targetName === base) { notify('Choose a target profile name different from the base', 'error'); return }
+    await useAtStart()
+  }
+
   return (
     <div className="config envs">
-      <section>
-        <div className="row" style={{ flexWrap: 'wrap' }}>
-          <label className="inline">Profile
-            <span className="mono muted">application-</span>
-            <input className="input mono" style={{ width: 130 }} value={target} onChange={(e) => setTarget(e.target.value)} placeholder="custom" />
-            <span className="mono muted">{ext}</span>
-          </label>
-          <label className={`switch${usedAtStart ? ' on' : ''}`} title={`Create application-${targetName || '…'}${ext} and start the service with that profile (application.yml + application-${targetName || '…'}${ext})`}>
-            <input type="checkbox" checked={usedAtStart} disabled={busy || !targetName || targetName === base} onChange={(e) => toggleStart(e.target.checked)} />
-            <span className="switch-track"><span className="switch-knob" /></span>
-            <span className="switch-label">{busy ? 'working…' : 'use at startup'}</span>
-          </label>
-          {generated && <span className="muted small mono ellipsis" title={generated.file}>created: {generated.file.split(/[\\/]/).pop()}</span>}
-          {!generated && info.generated.includes(targetName) && <span className="muted small">application-{targetName}{ext} exists — the toggle overwrites it</span>}
+      {/* Cabeçalho (maquete "Environment configuration"): título + descrição à esquerda, seletor de ambiente à direita */}
+      <div className="envs-head">
+        <div>
+          <h3 className="envs-title">Environment variables</h3>
+          <div className="muted small">Compare defaults and edit the configuration for your environment.</div>
         </div>
-        {generated?.warnings.map((w) => <div key={w} className="small" style={{ color: 'var(--amber)' }}>⚠ {w}</div>)}
-      </section>
-
-      <section>
-        <div className="row">
-          <input className="input mono" style={{ maxWidth: 260 }} placeholder="search variable or value…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && <button className="btn btn-sm btn-ghost" onClick={() => setSearch('')} title="clear search">✕</button>}
-          <span className="muted small">{rows.length} {rows.length === 1 ? 'variable' : 'variables'}{rows.length < allKeys.length ? ` of ${allKeys.length}` : ''}</span>
-          <span className="grow" />
-          <label className="check"><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> only differences</label>
-          <label className="inline">Environment
-            <select className="input mono" value={env} onChange={(e) => setSelectedEnv(e.target.value)} title="Environment file to compare (k8s file first, else application-<env>)">
+        <div className="envs-pick">
+          <span className="muted small">Environment</span>
+          <label className="env-select" title={info.files[env]}>
+            <span className="dot dot-running" aria-hidden="true" />
+            <span className="env-name ellipsis">{envName || 'Environment'}</span>
+            <select value={env} onChange={(e) => setSelectedEnv(e.target.value)} aria-label="Environment file to compare (k8s file first, else application-<env>)">
               {sources.map((p) => <option key={p} value={p}>{info.names?.[p] ?? p}</option>)}
             </select>
-            {info.k8s.includes(env) && <span className="k8s-tag" title={info.files[env]}>k8s</span>}
+            <img src={icons.chevronDown} alt="" width={15} height={15} />
           </label>
+          {info.k8s.includes(env) && <span className="k8s-tag" title={info.files[env]}>k8s</span>}
         </div>
-        <div className="envs-scroll">
-          <table className="grid envs-table">
-            <thead>
-              <tr>
-                <th>Variable</th>
-                <th>application.yaml (default)</th>
-                <th className="env-col-head" title={info.files[env]}>
-                  <span className="mono">{env ? `${info.names?.[env] ?? env} — ${info.files[env] ?? ''}` : 'Environment'}</span>
-                  {info.k8s.includes(env) && <span className="k8s-tag" title={info.files[env]}>k8s</span>}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const envVal = r.values[env]
-                const edited = r.key in values
-                const shown = edited ? values[r.key] : (resolvePh(envVal ?? defaults[r.key]) ?? '')
-                return (
-                  <tr key={r.key}>
-                    <td className="mono small">{r.key}</td>
-                    <td className="mono small val-default" title={defaults[r.key] ?? 'does not exist in the base application.yaml'}>{defaults[r.key] ?? '—'}</td>
-                    <td className="val-edit">
-                      <input className={`input mono${edited ? ' edited' : ''}`} value={shown} placeholder={resolvePh(envVal ?? defaults[r.key]) ?? ''}
-                        onChange={(e) => setValues((v) => ({ ...v, [r.key]: e.target.value }))}
-                        title={`value for "${info.names?.[env] ?? env}" (used in the generated file)${envVal !== undefined ? ` · in the file: ${envVal}` : ''}`} />
-                      {edited && <button className="link small" title="reset to the detected value" onClick={() => reset(r.key)}>↺</button>}
-                    </td>
-                  </tr>
-                )
-              })}
-              {!rows.length && <tr><td colSpan={3} className="muted">{onlyDiff ? 'No variable differs between environments.' : 'No variables found.'}</td></tr>}
-            </tbody>
-          </table>
+      </div>
+
+      {/* Perfil gerado + "use at startup" (funcionalidade mantida, apresentação compacta) */}
+      <div className="envs-profile">
+        <label className="inline">Profile
+          <span className="mono muted">application-</span>
+          <input className="input mono" style={{ width: 130 }} value={target} onChange={(e) => setTarget(e.target.value)} placeholder="custom" />
+          <span className="mono muted">{ext}</span>
+        </label>
+        <label className={`switch${usedAtStart ? ' on' : ''}`} title={`Create application-${targetName || '…'}${ext} and start the service with that profile (application.yml + application-${targetName || '…'}${ext})`}>
+          <input type="checkbox" checked={usedAtStart} disabled={busy || !targetName || targetName === base} onChange={(e) => toggleStart(e.target.checked)} />
+          <span className="switch-track"><span className="switch-knob" /></span>
+          <span className="switch-label">{busy ? 'working…' : 'use at startup'}</span>
+        </label>
+        {generated && <span className="muted small mono ellipsis" title={generated.file}>created: {generated.file.split(/[\\/]/).pop()}</span>}
+        {!generated && info.generated.includes(targetName) && <span className="muted small">application-{targetName}{ext} exists — saving overwrites it</span>}
+        {generated?.warnings.map((w) => <span key={w} className="small" style={{ color: 'var(--amber)' }}>⚠ {w}</span>)}
+      </div>
+
+      {/* Editor de variáveis (card da maquete) */}
+      <div className="var-editor">
+        <div className="var-toolbar">
+          <label className="var-search">
+            <img src={icons.search} alt="" width={15} height={15} />
+            <input ref={searchRef} placeholder="Search variable or value…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            {search ? <button type="button" className="link small" onClick={() => setSearch('')} title="clear search">✕</button> : <span className="var-kbd">⌘ K</span>}
+          </label>
+          <span className="muted small grow">{rows.length} {rows.length === 1 ? 'variable' : 'variables'}{rows.length < allKeys.length ? ` of ${allKeys.length}` : ''}</span>
+          <label className="check"><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> Only differences</label>
         </div>
-        <p className="muted small">The <b>application.yaml (default)</b> column shows the base value (read only). The last column shows the value for the chosen environment — edit it directly to set the value for the generated file. The <span className="mono">↺</span> resets to the detected value.</p>
-      </section>
+
+        <div className="var-head">
+          <span className="var-col-key">Variable</span>
+          <span className="var-col-default">application.yaml (default)</span>
+          <span className="var-col-env mono" title={info.files[env]}>{env ? `${envName} — ${info.files[env] ?? ''}` : 'Environment'}<img src={icons.pencil} alt="" width={12} height={12} title="editable column" /></span>
+        </div>
+
+        {visible.map((r) => {
+          const envVal = r.values[env]
+          const edited = r.key in values
+          const shown = edited ? values[r.key] : (resolvePh(envVal ?? defaults[r.key]) ?? '')
+          return (
+            <div className="var-row" key={r.key}>
+              <span className="var-col-key mono">{r.key}</span>
+              <span className="var-col-default mono muted" title={defaults[r.key] ?? 'does not exist in the base application.yaml'}>{defaults[r.key] ?? '—'}</span>
+              <span className="var-col-env">
+                <input className={`var-input mono${edited ? ' edited' : ''}`} value={shown} placeholder={resolvePh(envVal ?? defaults[r.key]) ?? ''}
+                  onChange={(e) => setValues((v) => ({ ...v, [r.key]: e.target.value }))}
+                  title={`value for "${envName}" (used in the generated file)${envVal !== undefined ? ` · in the file: ${envVal}` : ''}`} />
+                {edited && <button type="button" className="link small" title="reset to the detected value" onClick={() => reset(r.key)}>↺</button>}
+              </span>
+            </div>
+          )
+        })}
+        {!rows.length && <div className="var-row muted small">{onlyDiff ? 'No variable differs between environments.' : 'No variables found.'}</div>}
+
+        <div className="var-footer">
+          <img src={icons.check} alt="" width={15} height={15} className={unsaved ? 'dim' : ''} />
+          <span className="muted small grow">{unsaved ? `${unsaved} unsaved change${unsaved === 1 ? '' : 's'} — saved with the profile application-${targetName || '…'}${ext}` : 'No unsaved changes'}</span>
+          <span className="muted small">Showing {visible.length} of {rows.length}</span>
+          {!filtering && rows.length > PREVIEW_ROWS && (
+            <button type="button" className="btn" onClick={() => setShowAll((v) => !v)}>
+              <img src={icons.arrowDown} alt="" width={15} height={15} style={{ transform: showAll ? 'scaleY(-1)' : undefined }} />{showAll ? 'Show fewer' : 'View all variables'}
+            </button>
+          )}
+          <button type="button" className="btn btn-primary" disabled={busy || !unsaved} onClick={() => void saveChanges()} title={`Write the edited values into application-${targetName || '…'}${ext} (and use it at startup)`}>{busy ? 'Saving…' : 'Save changes'}</button>
+        </div>
+      </div>
     </div>
   )
 }

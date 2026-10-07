@@ -268,6 +268,8 @@ export default function App() {
               <ServiceView
                 key={selected.id}
                 svc={selected}
+                git={gitSummary[selected.id]}
+                onBreadcrumb={() => setSelectedId(null)}
                 state={states[selected.id]}
                 states={states}
                 settings={settings}
