@@ -1,5 +1,5 @@
 import type {
-  AppSettings, ContainerInfo, ContainerExecResult, DeployResult, DirListing, BrunoCollection, DbInfo, DepGraph, DepsInfo, DiagReport, EngineInfo, GrafanaLogLine, GrafanaSettings, GrafanaTestResult, JarInfo, GitBranch, GitCommit, GitInfo, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
+  AppSettings, ContainerInfo, ContainerExecResult, DeployResult, DirListing, BrunoCollection, DbInfo, DepGraph, DepsInfo, DiagReport, EngineInfo, GrafanaLogLine, GrafanaSettings, GrafanaTestResult, JarInfo, GitBranch, GitCommit, GitInfo, GitStash, GitSummary, ImageInfo, RedisInfo, RedisKeyValue, RedisScan, EnvComposeResult, EnvMix, EnvsInfo, HttpRequest, HttpResponse, KcClient, KcExportResult, KcNewClient, KcNewRealm, KcNewUser, KcRealmPatch, KcProviderInfo, KcRealm, KcUser,
   KeycloakInfo, LogLine, ProcState, PubSubInbox, PubSubInfo, PubSubSubscription, PubSubTopic, ScanResult, SearchResult, SrDbStatus, SrTableData, StartMode, CmdLogEntry
 } from '../../shared/types'
 
@@ -99,7 +99,12 @@ export const api = {
     commit: (id: string, message: string, stageAll: boolean) => req<string>('POST', `/api/services/${enc(id)}/git/commit`, { message, stageAll }),
     fetch: (id: string) => req<string>('POST', `/api/services/${enc(id)}/git/fetch`),
     pull: (id: string) => req<string>('POST', `/api/services/${enc(id)}/git/pull`),
-    push: (id: string) => req<string>('POST', `/api/services/${enc(id)}/git/push`)
+    push: (id: string) => req<string>('POST', `/api/services/${enc(id)}/git/push`),
+    stashes: (id: string) => req<GitStash[]>('GET', `/api/services/${enc(id)}/git/stashes`),
+    stash: (id: string, message: string) => req<string>('POST', `/api/services/${enc(id)}/git/stash`, { message }),
+    stashApply: (id: string, ref: string, pop: boolean) => req<string>('POST', `/api/services/${enc(id)}/git/stash/apply`, { ref, pop }),
+    stashDrop: (id: string, ref: string) => req<string>('POST', `/api/services/${enc(id)}/git/stash/drop`, { ref }),
+    ignore: (id: string, changes: Array<{ repoPath: string; untracked: boolean }>) => req<{ added: string[]; untracked: string[] }>('POST', `/api/services/${enc(id)}/git/ignore`, { changes })
   },
   diagnostics: () => req<DiagReport>('GET', '/api/diagnostics'),
   deps: (id: string) => req<DepsInfo>('GET', `/api/services/${enc(id)}/deps`),

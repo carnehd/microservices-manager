@@ -1,7 +1,8 @@
 import { execFile } from 'child_process'
-import { relative, sep } from 'path'
+import { promises as fs } from 'fs'
+import { join, relative, sep } from 'path'
 import { promisify } from 'util'
-import type { GitBranch, GitChange, GitCommit, GitInfo, ServiceInfo } from '../shared/types'
+import type { GitBranch, GitChange, GitCommit, GitInfo, GitStash, ServiceInfo } from '../shared/types'
 import { logCmd } from './cmdlog'
 
 const execFileP = promisify(execFile)
@@ -232,6 +233,67 @@ export async function push(svc: ServiceInfo): Promise<string> {
 }
 
 /** Só o essencial para a barra lateral: branch e nº de alterações (1 status por repositório). */
+const STASH_RE = /^stash@\{\d+\}$/
+
+export async function stashList(svc: ServiceInfo): Promise<GitStash[]> {
+  const repo = await repoOf(svc)
+  if (!repo) throw new Error('Not a git repository')
+  const out = await git(repo.root, ['stash', 'list', `--format=%gd${US}%s${US}%cr`])
+  return out.split('\n').filter(Boolean).map((line) => {
+    const [ref, message, when] = line.split(US)
+    return { ref, message, when }
+  })
+}
+
+/** Guarda as alterações por commitar (incluindo ficheiros novos) e deixa o working tree limpo. */
+export async function stashSave(svc: ServiceInfo, message: string): Promise<string> {
+  const repo = await repoOf(svc)
+  if (!repo) throw new Error('Not a git repository')
+  const msg = message.trim()
+  return git(repo.root, ['stash', 'push', '-u', ...(msg ? ['-m', msg] : []), ...scope(repo.prefix)])
+}
+
+/** apply mantém a entrada no stash; pop remove-a depois de aplicar com sucesso. */
+export async function stashApply(svc: ServiceInfo, ref: string, pop: boolean): Promise<string> {
+  const repo = await repoOf(svc)
+  if (!repo) throw new Error('Not a git repository')
+  if (!STASH_RE.test(ref)) throw new Error(`Invalid stash: ${ref}`)
+  return git(repo.root, ['stash', pop ? 'pop' : 'apply', ref])
+}
+
+export async function stashDrop(svc: ServiceInfo, ref: string): Promise<string> {
+  const repo = await repoOf(svc)
+  if (!repo) throw new Error('Not a git repository')
+  if (!STASH_RE.test(ref)) throw new Error(`Invalid stash: ${ref}`)
+  return git(repo.root, ['stash', 'drop', ref])
+}
+
+/**
+ * Deixa de commitar estes ficheiros: acrescenta-os ao .gitignore da raiz do repo e, se já estiverem
+ * tracked, `git rm --cached` (saem do índice mas ficam no disco).
+ */
+export async function ignore(svc: ServiceInfo, changes: Array<{ repoPath: string; untracked: boolean }>): Promise<{ added: string[]; untracked: string[] }> {
+  const repo = await repoOf(svc)
+  if (!repo) throw new Error('Not a git repository')
+  const file = join(repo.root, '.gitignore')
+  let text = ''
+  try { text = await fs.readFile(file, 'utf8') } catch { /* ainda não existe */ }
+  const existing = new Set(text.split(/\r?\n/).map((l) => l.trim()))
+  const added: string[] = []
+  for (const c of changes) {
+    const line = '/' + c.repoPath.replace(/\\/g, '/') // ancorado à raiz, para não apanhar homónimos noutras pastas
+    if (existing.has(line) || existing.has(c.repoPath)) continue
+    added.push(line)
+  }
+  if (added.length) {
+    const sep2 = text.length && !text.endsWith('\n') ? '\n' : ''
+    await fs.writeFile(file, `${text}${sep2}${added.join('\n')}\n`)
+  }
+  const tracked = changes.filter((c) => !c.untracked).map((c) => c.repoPath)
+  if (tracked.length) await git(repo.root, ['rm', '--cached', '-r', '--', ...tracked])
+  return { added, untracked: tracked }
+}
+
 export async function gitBrief(svc: ServiceInfo): Promise<{ branch?: string; changes: number; ahead?: number; behind?: number } | null> {
   const repo = await repoOf(svc).catch(() => null)
   if (!repo) return null

@@ -537,6 +537,13 @@ export interface GitBranch {
   when?: string
   subject?: string
 }
+/** Entrada do `git stash list` */
+export interface GitStash {
+  /** ex.: stash@{0} */
+  ref: string
+  message: string
+  when?: string
+}
 export interface GitCommit {
   hash: string
   author: string

@@ -687,6 +687,11 @@ apiRouter.post('/services/:id/git/commit', h((req) => gitOps.commit(findService(
 apiRouter.post('/services/:id/git/fetch', h((req) => gitOps.fetch(findService(param(req, 'id')))))
 apiRouter.post('/services/:id/git/pull', h((req) => gitOps.pull(findService(param(req, 'id')))))
 apiRouter.post('/services/:id/git/push', h((req) => gitOps.push(findService(param(req, 'id')))))
+apiRouter.get('/services/:id/git/stashes', h((req) => gitOps.stashList(findService(param(req, 'id')))))
+apiRouter.post('/services/:id/git/stash', h((req) => gitOps.stashSave(findService(param(req, 'id')), str(req.body?.message))))
+apiRouter.post('/services/:id/git/stash/apply', h((req) => gitOps.stashApply(findService(param(req, 'id')), str(req.body?.ref), !!req.body?.pop)))
+apiRouter.post('/services/:id/git/stash/drop', h((req) => gitOps.stashDrop(findService(param(req, 'id')), str(req.body?.ref))))
+apiRouter.post('/services/:id/git/ignore', h((req) => gitOps.ignore(findService(param(req, 'id')), (Array.isArray(req.body?.changes) ? req.body.changes : []) as Array<{ repoPath: string; untracked: boolean }>)))
 
 // ---- Containers (Podman/Docker) ----
 const CONTAINER_ACTIONS = new Set<ContainerAction>(['start', 'stop', 'restart', 'remove', 'pause', 'unpause'])

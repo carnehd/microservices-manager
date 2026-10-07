@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { GitBranch, GitChange, GitCommit, GitInfo, ServiceInfo } from '../../../shared/types'
+import type { GitBranch, GitChange, GitCommit, GitInfo, GitStash, ServiceInfo } from '../../../shared/types'
 import { api } from '../api'
 import { Badge } from './common'
 
@@ -10,6 +10,8 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
   const [info, setInfo] = useState<GitInfo | null>(null)
   const [branches, setBranches] = useState<GitBranch[]>([])
   const [log, setLog] = useState<GitCommit[]>([])
+  const [stashes, setStashes] = useState<GitStash[]>([])
+  const [stashMsg, setStashMsg] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [sel, setSel] = useState<GitChange | null>(null)
   const [diff, setDiff] = useState<string>('')
@@ -26,9 +28,10 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
       const i = await api.git.info(svc.id)
       setInfo(i)
       if (i.isRepo) {
-        const [b, l] = await Promise.all([api.git.branches(svc.id), api.git.log(svc.id)])
+        const [b, l, st] = await Promise.all([api.git.branches(svc.id), api.git.log(svc.id), api.git.stashes(svc.id).catch(() => [] as GitStash[])])
         setBranches(b)
         setLog(l)
+        setStashes(st)
         setCheckoutTarget((cur) => cur || i.branch || '')
       }
     } catch (e) {
@@ -126,6 +129,13 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
               <button className="btn btn-sm" disabled={!!busy || !staged.length} onClick={() => act('unstage', () => api.git.unstage(svc.id, staged.map((c) => c.repoPath)))}>Unstage all</button>
             </div>
             <p className="muted small">Uncommitted changes in the working folder — they belong to no branch until you commit; when you switch branches they come with you.</p>
+            {info.changes.length > 0 && (
+              <div className="row">
+                <input className="input grow" placeholder="stash message (optional)" value={stashMsg} onChange={(e) => setStashMsg(e.target.value)} />
+                <button className="btn btn-sm" disabled={!!busy} title="git stash push -u — puts all these changes (new files included) aside and leaves the tree clean; get them back with Apply/Pop below"
+                  onClick={() => act('stash', () => api.git.stash(svc.id, stashMsg), () => { setStashMsg(''); return 'Changes stashed' })}>Stash changes</button>
+              </div>
+            )}
             {!info.changes.length && <p className="muted">No changes — the tree is clean.</p>}
             {info.changes.length > 0 && (
               <table className="grid">
@@ -144,6 +154,8 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
                       </td>
                       <td className="cell-actions">
                         <button className="btn btn-sm" onClick={() => setSel(c)}>Diff</button>
+                        <button className="btn btn-sm" disabled={!!busy} title={c.untracked ? 'Add to .gitignore (the file stays on disk, never committed)' : 'Add to .gitignore and stop tracking it (git rm --cached — the file stays on disk)'}
+                          onClick={() => { if (confirm(`Ignore ${c.path}?\n\nIt is added to the repo's .gitignore${c.untracked ? '' : ' and removed from the index (git rm --cached) — the file stays on disk but will no longer be committed'}.`)) void act('ignore', () => api.git.ignore(svc.id, [{ repoPath: c.repoPath, untracked: c.untracked }]), `${c.path} added to .gitignore`) }}>Ignore</button>
                         <button className="btn btn-sm btn-danger" disabled={!!busy}
                           onClick={() => { if (confirm(c.untracked ? `Delete the untracked file ${c.path}?` : `Discard the changes in ${c.path}? (reverts to the last commit)`)) void act('discard', () => api.git.discard(svc.id, [{ repoPath: c.repoPath, untracked: c.untracked }]), `${c.path} discarded`) }}>Discard</button>
                       </td>
@@ -167,6 +179,29 @@ export function GitView({ svc, notify, fail, onChanged }: { svc: ServiceInfo; no
               <button className="btn" disabled={!!busy || !message.trim() || !info.changes.length} title="git add -A (in this folder) + commit" onClick={() => act('commit', () => api.git.commit(svc.id, message, true), () => { setMessage(''); return 'Commit done' })}>Stage all + commit</button>
             </div>
           </section>
+          {stashes.length > 0 && (
+            <section>
+              <h3>Stashes <span className="count">{stashes.length}</span></h3>
+              <p className="muted small"><b>Apply</b> brings the changes back and keeps the stash; <b>Pop</b> brings them back and removes it. Both can conflict with the current tree — resolve like a merge.</p>
+              <table className="grid">
+                <thead><tr><th>Ref</th><th>Message</th><th>When</th><th></th></tr></thead>
+                <tbody>
+                  {stashes.map((s) => (
+                    <tr key={s.ref}>
+                      <td className="mono small">{s.ref}</td>
+                      <td className="small">{s.message}</td>
+                      <td className="small muted">{s.when ?? ''}</td>
+                      <td className="cell-actions">
+                        <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => act('stash-apply', () => api.git.stashApply(svc.id, s.ref, false), `${s.ref} applied (kept in the stash)`)}>Apply</button>
+                        <button className="btn btn-sm" disabled={!!busy} onClick={() => act('stash-pop', () => api.git.stashApply(svc.id, s.ref, true), `${s.ref} applied and removed`)}>Pop</button>
+                        <button className="btn btn-sm btn-danger" disabled={!!busy} onClick={() => { if (confirm(`Drop ${s.ref} ("${s.message}")? The stashed changes are lost.`)) void act('stash-drop', () => api.git.stashDrop(svc.id, s.ref), `${s.ref} dropped`) }}>Drop</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
         </>
       )}
 
