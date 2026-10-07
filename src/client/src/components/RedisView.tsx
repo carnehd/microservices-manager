@@ -25,6 +25,24 @@ function pretty(v: unknown): string {
   return JSON.stringify(v, null, 2)
 }
 
+/** Como pretty(), mas também abre JSON guardado como string DENTRO de listas/hashes/sets (ex.: mensagens em cache). */
+function prettyDeep(v: unknown): string {
+  const open = (x: unknown): unknown => {
+    if (typeof x === 'string') {
+      const s = x.trim()
+      if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+        try { return JSON.parse(s) } catch { return x }
+      }
+      return x
+    }
+    if (Array.isArray(x)) return x.map(open)
+    if (x && typeof x === 'object') return Object.fromEntries(Object.entries(x as Record<string, unknown>).map(([k, y]) => [k, open(y)]))
+    return x
+  }
+  if (typeof v === 'string') return pretty(v)
+  return JSON.stringify(open(v), null, 2)
+}
+
 export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown) => void }) {
   const [info, setInfo] = useState<RedisInfo | null>(null)
   const [pattern, setPattern] = useState('*')
@@ -122,7 +140,7 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
     setBusy('cmd')
     try {
       const r = await api.redis.command(cmd)
-      setCmdOut(pretty(r ?? '(nil)'))
+      setCmdOut(prettyDeep(r ?? '(nil)'))
       await refreshInfo()
       await search('0')
     } catch (e) {
@@ -220,7 +238,7 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
                   {selected.type === 'string' ? (
                     <StringEditor kv={selected} busy={!!busy} onSave={(v) => act('set', () => api.redis.set(selected.key, v), 'Value saved', false).then(() => open(selected.key))} />
                   ) : (
-                    <pre className="resp-body">{pretty(selected.value)}</pre>
+                    <pre className="resp-body">{prettyDeep(selected.value)}</pre>
                   )}
                 </>
               )}
@@ -242,16 +260,20 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
 }
 
 function StringEditor({ kv, busy, onSave }: { kv: RedisKeyValue; busy: boolean; onSave: (v: string) => Promise<void> }) {
-  const [text, setText] = useState(typeof kv.value === 'string' ? kv.value : '')
-  useEffect(() => setText(typeof kv.value === 'string' ? kv.value : ''), [kv])
-  const dirty = text !== kv.value
+  const raw = typeof kv.value === 'string' ? kv.value : ''
+  // Abre já formatado quando é JSON válido (só espaços/quebras — o valor é o mesmo); formatar não conta como alteração.
+  const [text, setText] = useState(pretty(raw))
+  useEffect(() => setText(pretty(raw)), [raw])
+  const isJson = (s: string): boolean => { try { JSON.parse(s); return true } catch { return false } }
+  const dirty = text !== raw && text !== pretty(raw)
   return (
     <div>
-      <textarea className="input mono" rows={Math.min(16, Math.max(4, text.split('\n').length + 1))} style={{ width: '100%' }} value={text} onChange={(e) => setText(e.target.value)} />
+      <textarea className="input mono" rows={Math.min(20, Math.max(4, text.split('\n').length + 1))} style={{ width: '100%' }} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
       <div className="row">
-        <span className="muted small">{pretty(text) !== text ? 'valid JSON' : ''}</span>
+        <span className="muted small">{isJson(text) ? 'valid JSON' : ''}</span>
         <span className="grow" />
-        <button className="btn btn-sm" disabled={!dirty} onClick={() => setText(String(kv.value))}>Reset</button>
+        <button className="btn btn-sm" disabled={!isJson(text) || text === pretty(text)} onClick={() => setText(pretty(text))} title="Pretty-print the JSON">Format JSON</button>
+        <button className="btn btn-sm" disabled={!dirty} onClick={() => setText(pretty(raw))}>Reset</button>
         <button className="btn btn-sm btn-primary" disabled={!dirty || busy} onClick={() => onSave(text)}>Save value</button>
       </div>
     </div>
