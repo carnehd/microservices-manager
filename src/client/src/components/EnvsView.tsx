@@ -156,18 +156,18 @@ export function EnvsView({
           </label>
           {generated && <span className="muted small mono ellipsis" title={generated.file}>created: {generated.file.split(/[\\/]/).pop()}</span>}
           {!generated && info.generated.includes(targetName) && <span className="muted small">application-{targetName}{ext} exists — the toggle overwrites it</span>}
-          <label className="inline" style={{ marginLeft: 'auto' }}>Environment
-            <select className="input mono" value={env} onChange={(e) => setSelectedEnv(e.target.value)} title="Environment file to compare">
-              {sources.map((p) => <option key={p} value={p}>{info.names?.[p] ?? p}</option>)}
-            </select>
-            {info.k8s.includes(env) && <span className="k8s-tag" title={info.files[env]}>k8s</span>}
-          </label>
         </div>
         {generated?.warnings.map((w) => <div key={w} className="small" style={{ color: 'var(--amber)' }}>⚠ {w}</div>)}
       </section>
 
       <section>
         <div className="row">
+          <label className="inline">Environment
+            <select className="input mono" value={env} onChange={(e) => setSelectedEnv(e.target.value)} title="Environment file to compare (k8s file first, else application-<env>)">
+              {sources.map((p) => <option key={p} value={p}>{info.names?.[p] ?? p}</option>)}
+            </select>
+            {info.k8s.includes(env) && <span className="k8s-tag" title={info.files[env]}>k8s</span>}
+          </label>
           <input className="input mono" style={{ maxWidth: 260 }} placeholder="search variable or value…" value={search} onChange={(e) => setSearch(e.target.value)} />
           {search && <button className="btn btn-sm btn-ghost" onClick={() => setSearch('')} title="clear search">✕</button>}
           <span className="muted small">{rows.length} {rows.length === 1 ? 'variable' : 'variables'}{rows.length < allKeys.length ? ` of ${allKeys.length}` : ''}</span>
@@ -194,7 +194,7 @@ export function EnvsView({
                 return (
                   <tr key={r.key}>
                     <td className="mono small">{r.key}</td>
-                    <td className="mono small val-default" title={defaults[r.key] !== undefined ? `in the file: ${defaults[r.key]}` : 'does not exist in the base application.yaml'}>{resolvePh(defaults[r.key]) ?? '—'}</td>
+                    <td className="mono small val-default" title={defaults[r.key] ?? 'does not exist in the base application.yaml'}>{defaults[r.key] ?? '—'}</td>
                     <td className="val-edit">
                       <input className={`input mono${edited ? ' edited' : ''}`} value={shown} placeholder={resolvePh(envVal ?? defaults[r.key]) ?? ''}
                         onChange={(e) => setValues((v) => ({ ...v, [r.key]: e.target.value }))}
