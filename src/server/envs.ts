@@ -1,9 +1,37 @@
 import { existsSync, promises as fs } from 'fs'
 import { basename, join, relative, sep } from 'path'
 import { parseDocument } from 'yaml'
+import { logCmd } from './cmdlog'
 import type { EnvComposeResult, EnvKey, EnvMix, EnvsInfo, ServiceInfo } from '../shared/types'
 
 export const MARKER = '# Gerado pela Microservices Manager'
+
+/**
+ * Separa o 1.º documento YAML do resto (ficheiros multi-documento com `---`, ex. blocos
+ * spring.config.activate.on-profile). Só o 1.º é editado; o resto é devolvido tal e qual.
+ */
+function splitFirstDoc(text: string): { first: string; rest: string; extraDocs: number } {
+  const re = /^---[ \t]*(?:\r?\n|$)/gm
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text))) {
+    if (m.index === 0) continue // `---` inicial pertence ao 1.º documento
+    const rest = text.slice(m.index)
+    return { first: text.slice(0, m.index), rest, extraDocs: (rest.match(/^---[ \t]*$/gm) ?? []).length }
+  }
+  return { first: text, rest: '', extraDocs: 0 }
+}
+/** fs.writeFile com registo no Terminal comum (caminho + erro do SO), para diagnosticar noutros PCs. */
+async function writeLogged(path: string, content: string): Promise<void> {
+  logCmd(`write ${path}`, 'cmd')
+  try {
+    await fs.writeFile(path, content)
+    logCmd('ok', 'ok')
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException
+    logCmd(`${err.code ?? 'ERR'}: ${err.message}`, 'err')
+    throw new Error(`Cannot write ${path}: ${err.code ?? ''} ${err.message}`.trim())
+  }
+}
 const ORDER = ['local', 'dev', 'sit', 'uat', 'prod']
 const relPosix = (from: string, to: string): string => relative(from, to).split(sep).join('/')
 type Format = 'yaml' | 'properties'
@@ -274,7 +302,10 @@ export async function setBaseActiveProfile(svc: ServiceInfo, profile?: string): 
     } else if (i >= 0) lines.splice(i, 1)
     text = lines.join('\n')
   } else {
-    const doc = parseDocument(text)
+    // Só o 1.º documento é editado; blocos `---` seguintes (on-profile) ficam intactos.
+    const { first, rest } = splitFirstDoc(text)
+    const doc = parseDocument(first)
+    if (doc.errors.length) throw new Error(`${name}: YAML error — ${doc.errors[0].message.split('\n')[0]}`)
     if (prof) {
       doc.setIn(['spring', 'profiles', 'active'], prof)
     } else {
@@ -282,9 +313,9 @@ export async function setBaseActiveProfile(svc: ServiceInfo, profile?: string): 
       const profiles = doc.getIn(['spring', 'profiles']) as { items?: unknown[] } | undefined
       if (profiles && Array.isArray(profiles.items) && profiles.items.length === 0) doc.deleteIn(['spring', 'profiles'])
     }
-    text = doc.toString()
+    text = doc.toString() + rest
   }
-  await fs.writeFile(full, text)
+  await writeLogged(full, text)
   return { file: full }
 }
 
@@ -364,7 +395,11 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
   ]
   let content: string
   if (base.format === 'yaml') {
-    const doc = parseDocument(base.text)
+    // Multi-documento (`---`): só o 1.º documento é copiado; os outros são blocos de outros perfis.
+    const { first, extraDocs } = splitFirstDoc(base.text)
+    if (extraDocs) warnings.push(`${base.file} has ${extraDocs} more YAML document(s) (---) — only the first was copied`)
+    const doc = parseDocument(first)
+    if (doc.errors.length) throw new Error(`${base.file}: YAML error — ${doc.errors[0].message.split('\n')[0]}`)
     for (const o of overrides) doc.setIn(o.path, o.value)
     // Remove o comentário de topo do ficheiro de partida (ex. "# Ambiente: local"): o gerado tem cabeçalho próprio
     doc.commentBefore = null
@@ -400,6 +435,6 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
     }
     content = header.join('\n') + '\n' + lines.join('\n')
   }
-  await fs.writeFile(targetPath, content)
+  await writeLogged(targetPath, content)
   return { file: targetPath, content, warnings }
 }

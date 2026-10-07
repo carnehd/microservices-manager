@@ -585,7 +585,7 @@ apiRouter.get('/services/:id/envs', h(async (req) => {
 apiRouter.post('/services/:id/envs/compose', h(async (req) => {
   const svc = findService(param(req, 'id'))
   const body = (req.body ?? {}) as Partial<EnvMix> & { force?: boolean; setProfile?: boolean }
-  const mix: EnvMix = { base: str(body.base), target: str(body.target), choices: body.choices ?? {}, values: body.values ?? {} }
+  const mix: EnvMix = { base: str(body.base), target: str(body.target), choices: body.choices ?? {}, values: body.values ?? {}, envPlaceholders: body.envPlaceholders !== false }
   const result = await composeEnv(svc, mix, !!body.force)
   // Com o toggle ligado, o profile do input fica declarado no application.yaml base e é usado no arranque.
   if (body.setProfile) await setBaseActiveProfile(svc, mix.target)
