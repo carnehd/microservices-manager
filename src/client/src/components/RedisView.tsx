@@ -162,7 +162,6 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
         state={!ct ? 'unknown' : ct.running ? 'running' : ct.exists ? 'stopped' : 'missing'}
         port={info?.port}
         error={info?.error}
-        note={info ? <>{info.host}:{info.port} · db {info.db}{connected && <> · v{info.version} · {info.keys} keys · {info.usedMemory} · {info.clients} clients · hits {info.hits} / misses {info.misses}</>}</> : 'connecting…'}
       >
         <Badge tone={connected ? 'green' : 'red'}>{connected ? 'connected' : 'not connected'}</Badge>
       </ContainerHeader>

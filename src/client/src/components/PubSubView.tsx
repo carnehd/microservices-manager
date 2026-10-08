@@ -241,7 +241,6 @@ export function PubSubView({ settings, scan, notify, fail }: {
         stateLabel={stateTxt}
         port={info.port}
         error={!info.engineOk ? `container engine unavailable${info.error ? `: ${info.error}` : ''}` : undefined}
-        note={<>Local emulator · project <span className="mono">{info.projectId}</span> · configure it in <b>Settings → Pub/Sub</b>; container logs on the <b>Containers</b> page.</>}
       >
         {/* Barra de estado: uma ação (criar/arrancar ou parar) + ⓘ com as env vars para os microserviços */}
         <div className="pubsub-status-actions">

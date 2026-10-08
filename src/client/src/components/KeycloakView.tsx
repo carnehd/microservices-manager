@@ -125,7 +125,6 @@ export function KeycloakView({
         stateLabel={info?.container?.exists && !info.container.running && info.container.status ? `stopped (${info.container.status})` : undefined}
         port={kc.httpPort}
         error={info?.engineError}
-        note={<>admin <b>{kc.adminUser}</b>{isActive(state) && state?.mode ? <> · {state.mode}</> : null}</>}
       />
 
       <div className="actions">

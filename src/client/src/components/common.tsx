@@ -89,12 +89,11 @@ const CONTAINER_LABEL: Record<ContainerState, string> = { running: 'running', st
  * Cabeçalho comum das páginas Keycloak / Redis / Pub/Sub: título (com ícone de refresh), por baixo o container usado
  * e a imagem; à direita o estado e o porto em tags, seguidos de ações opcionais (children).
  */
-export function ContainerHeader({ title, onRefresh, refreshTitle, container, image, state, stateLabel, port, note, error, children }: {
+export function ContainerHeader({ title, onRefresh, refreshTitle, container, image, state, stateLabel, port, error, children }: {
   title: string; onRefresh: () => void | Promise<unknown>; refreshTitle: string
   container: string; image?: string
   state: ContainerState; stateLabel?: string; port?: number
-  /** linha extra por baixo (ex.: estatísticas do Redis, dica de configuração) */
-  note?: ReactNode; error?: string; children?: ReactNode
+  error?: string; children?: ReactNode
 }) {
   const tone = state === 'running' ? 'green' : state === 'stopped' ? 'amber' : 'muted'
   return (
@@ -106,11 +105,13 @@ export function ContainerHeader({ title, onRefresh, refreshTitle, container, ima
           {image && <><span className="ctr-sep">·</span><span className="mono" title="image">{image}</span></>}
           {error && <span className="text-error"> · {error}</span>}
         </div>
-        {note && <div className="muted small">{note}</div>}
       </div>
       <div className="ctr-tags">
-        <span className={`tag tag-${tone}`} title="container state"><StatusDot status={state === 'running' ? 'running' : 'stopped'} />{stateLabel ?? CONTAINER_LABEL[state]}</span>
-        {port ? <span className="tag tag-port" title="port on the host">:{port}</span> : null}
+        {/* estado e porto na mesma tag: "● running · :8080" */}
+        <span className={`tag tag-${tone}`} title="container state · port on the host">
+          <StatusDot status={state === 'running' ? 'running' : 'stopped'} />{stateLabel ?? CONTAINER_LABEL[state]}
+          {port ? <span className="tag-port mono">· :{port}</span> : null}
+        </span>
         {children}
       </div>
     </div>
