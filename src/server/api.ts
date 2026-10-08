@@ -91,7 +91,8 @@ function startService(id: string, mode: StartMode): ProcState {
   else if (mode === 'spotless') args.push('spotless:apply')
   else if (mode === 'run' || mode === 'debug') {
     if (svc.kind !== 'spring-boot') throw new Error('Only Spring Boot projects can be started')
-    args.push(...spot, 'spring-boot:run')
+    // Só spring-boot:run + as opções da página (Skip tests, Spotless): sem install prévio, mesmo em multi-módulo
+    args.push(...spot, ...skip, 'spring-boot:run')
     if (ss.profile?.trim()) args.push(`-Dspring-boot.run.profiles=${ss.profile.trim()}`)
     if (ss.port) args.push(`-Dspring-boot.run.arguments=--server.port=${ss.port}`)
     const jvm: string[] = []
@@ -128,12 +129,8 @@ function startService(id: string, mode: StartMode): ProcState {
   }
 
   const mvn = [quote(mavenCommand(svc, settings)), ...mavenGlobalArgs(settings, ss)].join(' ')
-  let commandLine = [mvn, ...args].join(' ')
-  if ((mode === 'run' || mode === 'debug') && svc.runModule) {
-    // Multi-módulo: instala os módulos de que o executável depende e corre só esse (spring-boot:run não aceita -am)
-    const install = [mvn, '-q', '-DskipTests', '-pl', quote(svc.runModule), '-am', 'install', ...(ss.extraArgs?.trim() ? [ss.extraArgs.trim()] : [])].join(' ')
-    commandLine = `${install} && ${[mvn, '-pl', quote(svc.runModule), ...args].join(' ')}`
-  }
+  // Multi-módulo: corre só o módulo executável (os irmãos vêm do repositório local, como no IDE após um install)
+  const commandLine = [mvn, ...((mode === 'run' || mode === 'debug') && svc.runModule ? ['-pl', quote(svc.runModule)] : []), ...args].join(' ')
   const state = pm.start({
     id,
     commandLine,
