@@ -333,6 +333,7 @@ export function envNameFor(key: string): string {
 }
 // Chaves de controlo do Spring que não devem ficar condicionadas a variáveis de ambiente.
 const NO_PLACEHOLDER = /^spring\.(profiles|config)\./
+const ON_PROFILE = ['spring', 'config', 'activate', 'on-profile']
 /** `${NOME_ENV:valor}` para uma folha; undefined = deixar como está (objeto/lista, já é placeholder, chave de controlo). */
 function withPlaceholder(key: string, v: unknown): string | undefined {
   if (v == null || typeof v === 'object' || NO_PLACEHOLDER.test(key)) return undefined
@@ -402,6 +403,8 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
     const doc = parseDocument(first)
     if (doc.errors.length) throw new Error(`${base.file}: YAML error — ${doc.errors[0].message.split('\n')[0]}`)
     for (const o of overrides) doc.setIn(o.path, o.value)
+    // O ficheiro gerado é do perfil de destino: on-profile com o nome escolhido (o copiado do ficheiro de partida ficaria com outro perfil e o Spring ignorava-o)
+    doc.setIn(ON_PROFILE, mix.target)
     // Remove o comentário de topo do ficheiro de partida (ex. "# Ambiente: local"): o gerado tem cabeçalho próprio
     doc.commentBefore = null
     const top = doc.contents as { commentBefore?: string | null; items?: Array<{ key?: { commentBefore?: string | null } }> } | null
@@ -425,6 +428,13 @@ export async function composeEnv(svc: ServiceInfo, mix: EnvMix, force: boolean):
       const line = `${o.key}=${display(o.value)}`
       if (i >= 0) lines[i] = line
       else lines.push(line)
+    }
+    {
+      const key = ON_PROFILE.join('.')
+      const i = lines.findIndex((l) => new RegExp(`^\\s*${key.replace(/\./g, '\\.')}\\s*[=:]`).test(l))
+      const line = `${key}=${mix.target}`
+      if (i >= 0) lines[i] = line
+      else lines.unshift(line)
     }
     if (placeholders) {
       for (let i = 0; i < lines.length; i++) {
