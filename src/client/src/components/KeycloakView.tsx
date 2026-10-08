@@ -186,7 +186,7 @@ export function KeycloakView({
         {tab === 'providers' && (
           <div className="config">
             <section>
-              <h3>Installed in <span className="mono">{info?.providersDir}</span><span className="muted"> (mounted at /opt/keycloak/providers)</span></h3>
+              <h3 title={info?.providersDir}>mounted at <span className="mono">/opt/keycloak/providers</span></h3>
               {!info?.providers.length && <p className="muted">No providers installed.</p>}
               {info?.providers.map((p) => (
                 <div className="row" key={p}>
