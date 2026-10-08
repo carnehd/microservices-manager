@@ -58,6 +58,7 @@ export function SettingsView({
       mavenSettingsFile: (form.mavenSettingsFile ?? '').trim(),
       baseDebugPort: Number(form.baseDebugPort) || 5005,
       containerCommand: (form.containerCommand ?? '').trim(),
+      gitCommand: (form.gitCommand ?? '').trim(),
       httpProxy: (form.httpProxy ?? '').trim(),
       httpsProxy: (form.httpsProxy ?? '').trim(),
       noProxy: (form.noProxy ?? '').trim(),
@@ -145,6 +146,10 @@ export function SettingsView({
               <label>
                 Maven settings.xml (-s) — mirrors/Nexus, proxy, credentials
                 <input className="input mono" value={form.mavenSettingsFile ?? ''} onChange={(e) => set('mavenSettingsFile', e.target.value)} placeholder="empty = ~/.m2/settings.xml (C:\Users\you\.m2\settings.xml)" />
+              </label>
+              <label>
+                Git command (Git tab) — empty = <span className="mono">git</span> from PATH, or Git for Windows in the usual folders
+                <input className="input mono" value={form.gitCommand ?? ''} onChange={(e) => set('gitCommand', e.target.value)} placeholder="C:\Program Files\Git\cmd\git.exe" />
               </label>
               <label>
                 Container command (Containers tab)

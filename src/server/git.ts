@@ -1,23 +1,54 @@
 import { execFile } from 'child_process'
-import { promises as fs } from 'fs'
+import { existsSync, promises as fs } from 'fs'
 import { join, relative, sep } from 'path'
 import { promisify } from 'util'
 import type { GitBranch, GitChange, GitCommit, GitInfo, GitStash, ServiceInfo } from '../shared/types'
 import { logCmd } from './cmdlog'
+import { getSettings } from './settings'
 
 const execFileP = promisify(execFile)
 const US = '\x1f'
 
+/** Pastas habituais do Git for Windows (instalador, portátil, IntelliJ/VS Code bundled) quando "git" não está no PATH do processo. */
+function windowsGitCandidates(): string[] {
+  const env = process.env
+  const roots = [env.ProgramFiles, env['ProgramFiles(x86)'], env.ProgramW6432, env.LOCALAPPDATA && join(env.LOCALAPPDATA, 'Programs'), env.USERPROFILE && join(env.USERPROFILE, 'scoop', 'apps', 'git', 'current'), 'C:\\'].filter((p): p is string => !!p)
+  const out: string[] = []
+  for (const r of roots) for (const sub of ['Git\\cmd\\git.exe', 'Git\\bin\\git.exe', 'cmd\\git.exe', 'bin\\git.exe', 'PortableGit\\cmd\\git.exe']) out.push(join(r, sub))
+  return out
+}
+
+let resolved: { key: string; bin: string } | null = null
+/** Executável do git: Settings → gitCommand, senão "git" do PATH; no Windows procura ainda o Git for Windows nas pastas habituais. */
+export function gitBin(): string {
+  const key = (getSettings().gitCommand ?? '').trim()
+  if (resolved && resolved.key === key) return resolved.bin
+  let bin = key || 'git'
+  if (!key && process.platform === 'win32') {
+    const found = windowsGitCandidates().find((p) => existsSync(p))
+    if (found && !process.env.PATH?.split(';').some((d) => existsSync(join(d, 'git.exe')))) bin = found
+  }
+  resolved = { key, bin }
+  return bin
+}
+
 async function git(cwd: string, args: string[], opts: { okCodes?: number[]; timeoutMs?: number } = {}): Promise<string> {
-  logCmd(`git ${args.join(' ')}   # in ${cwd}`, 'cmd') // Terminal comum (o poller de resumo corre em silêncio)
+  const bin = gitBin()
+  logCmd(`${bin === 'git' ? 'git' : `"${bin}"`} ${args.join(' ')}   # in ${cwd}`, 'cmd') // Terminal comum (o poller de resumo corre em silêncio)
   const t0 = Date.now()
   try {
-    const { stdout } = await execFileP('git', args, { cwd, timeout: opts.timeoutMs ?? 60_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } })
+    const { stdout } = await execFileP(bin, args, { cwd, timeout: opts.timeoutMs ?? 60_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } })
     logCmd(`exit 0 · ${Date.now() - t0} ms`, 'ok')
     return stdout
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: string; stdout?: string; code?: number | string }
-    if (err.code === 'ENOENT') { logCmd('"git" not found in PATH', 'err'); throw new Error('"git" not found in PATH — install Git (https://git-scm.com)') }
+    if (err.code === 'ENOENT') {
+      resolved = null // volta a procurar na próxima chamada (ex.: depois de instalar o Git ou mudar a setting)
+      logCmd(`"${bin}" not found`, 'err')
+      throw new Error(bin === 'git'
+        ? '"git" not found in PATH — install Git for Windows (https://git-scm.com) or set the full path (e.g. C:\\Program Files\\Git\\cmd\\git.exe) in Settings → Git command'
+        : `"${bin}" not found — check Settings → Git command`)
+    }
     if (typeof err.code === 'number' && opts.okCodes?.includes(err.code)) { logCmd(`exit ${err.code} · ${Date.now() - t0} ms`, 'ok'); return err.stdout ?? '' }
     logCmd((err.stderr || err.message || 'git failed').trim().split('\n').pop() ?? 'git failed', 'err')
     const msg = (err.stderr || err.stdout || err.message || '').trim().split('\n').filter((l) => l && !l.startsWith('hint:')).join(' · ')

@@ -249,6 +249,8 @@ export interface AppSettings {
   baseDebugPort: number
   /** Comando do motor de containers: podman (omissão) ou docker */
   containerCommand?: string
+  /** Executável do git (caminho completo ou nome no PATH). Vazio = "git" do PATH, ou o Git for Windows nas pastas habituais. */
+  gitCommand?: string
   /** Proxy passado (como HTTP_PROXY/HTTPS_PROXY/NO_PROXY) aos comandos podman/docker — pulls de imagens, arranque da máquina. Vazio = sem proxy. */
   httpProxy?: string
   httpsProxy?: string

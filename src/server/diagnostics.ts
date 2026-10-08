@@ -5,6 +5,7 @@ import { arch, platform, release, totalmem } from 'os'
 import { join } from 'path'
 import type { AppSettings, DiagItem, DiagReport, ProcState, ScanResult } from '../shared/types'
 import { engineInfo } from './containers'
+import { gitBin } from './git'
 import * as redisOps from './redis'
 import { dataDir } from './settings'
 import { logCmd } from './cmdlog'
@@ -98,8 +99,10 @@ export async function runDiagnostics(ctx: { settings: AppSettings; scan: ScanRes
   if (repo) add('Build', 'Local Maven repository', existsSync(repo) ? 'ok' : 'warn', repo, existsSync(repo) ? undefined : 'The folder does not exist — Maven creates it on the first build (check the path)')
   const mvnSettings = settings.mavenSettingsFile?.trim()
   if (mvnSettings) add('Build', 'settings.xml', existsSync(mvnSettings) ? 'ok' : 'fail', mvnSettings, existsSync(mvnSettings) ? undefined : 'File not found')
-  const git = await tryRun('git', ['--version'])
-  add('Build', 'Git', git ? 'ok' : 'warn', git ? git.out.split('\n')[0] : 'not found in PATH', git ? undefined : 'The Git tab requires Git (https://git-scm.com)')
+  const gitCmd = gitBin()
+  const git = await tryRun(gitCmd === 'git' ? 'git' : `"${gitCmd}"`, ['--version'])
+  add('Build', `Git (${gitCmd})`, git ? 'ok' : 'warn', git ? git.out.split('\n')[0] : gitCmd === 'git' ? 'not found in PATH' : 'not found',
+    git ? undefined : 'The Git tab requires Git: install Git for Windows (https://git-scm.com) or set the full path to git.exe in Settings → Git command')
 
   // ---- Pasta raiz / serviços ----
   if (!settings.rootFolder) add('Services', 'Root folder', 'fail', 'not set', 'Settings → Microservices root folder')
