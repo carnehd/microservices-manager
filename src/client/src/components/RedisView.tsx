@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { RedisInfo, RedisKeyMeta, RedisKeyValue } from '../../../shared/types'
 import { api, FRESH, type ReqOpts } from '../api'
-import { Badge, RefreshIcon } from './common'
+import { Badge, ContainerHeader } from './common'
 
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
 const TYPE_TONE: Record<string, 'blue' | 'green' | 'amber' | 'purple' | 'muted' | 'red'> = { string: 'blue', hash: 'green', list: 'amber', set: 'purple', zset: 'purple', stream: 'muted' }
@@ -155,17 +155,17 @@ export function RedisView({ notify, fail }: { notify: Notify; fail: (e: unknown)
 
   return (
     <main className="service">
-      <div className="svc-header">
-        <div className="grow">
-          <h2><RefreshIcon onRefresh={() => Promise.all([refreshInfo(FRESH), search('0')])} title="Refresh — re-run the commands that check Redis and its container" />Redis <Badge tone={connected ? 'green' : 'red'}>{connected ? 'connected' : 'not connected'}</Badge></h2>
-          <div className="muted small">
-            {info ? `${info.host}:${info.port} · db ${info.db}` : 'connecting…'}
-            {connected && <> · v{info!.version} · {info!.keys} keys · {info!.usedMemory} · {info!.clients} clients · hits {info!.hits} / misses {info!.misses}</>}
-            {info?.error && <span className="text-error"> · {info.error}</span>}
-            {ct && <> · container <b>{ct.name}</b> {ct.running ? 'running' : ct.exists ? 'stopped' : 'does not exist'}</>}
-          </div>
-        </div>
-      </div>
+      <ContainerHeader
+        title="Redis"
+        onRefresh={() => Promise.all([refreshInfo(FRESH), search('0')])} refreshTitle="Refresh — re-run the commands that check Redis and its container"
+        container={ct?.name ?? '—'} image={ct?.image}
+        state={!ct ? 'unknown' : ct.running ? 'running' : ct.exists ? 'stopped' : 'missing'}
+        port={info?.port}
+        error={info?.error}
+        note={info ? <>{info.host}:{info.port} · db {info.db}{connected && <> · v{info.version} · {info.keys} keys · {info.usedMemory} · {info.clients} clients · hits {info.hits} / misses {info.misses}</>}</> : 'connecting…'}
+      >
+        <Badge tone={connected ? 'green' : 'red'}>{connected ? 'connected' : 'not connected'}</Badge>
+      </ContainerHeader>
 
       <div className="actions">
         {ct && !ct.running && (

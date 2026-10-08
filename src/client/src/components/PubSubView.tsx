@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AppSettings, PubsubDetected, PubSubInbox, PubSubInfo, ScanResult } from '../../../shared/types'
 import { api, FRESH, type ReqOpts } from '../api'
-import { RefreshIcon } from './common'
+import { ContainerHeader } from './common'
 
 // Tópico inferido para uma subscrição sem tópico explícito (tira sufixos -sub/-subscription/-dev…).
 function topicForSub(name: string): string {
@@ -228,20 +228,21 @@ export function PubSubView({ settings, scan, notify, fail }: {
   if (!info) return <div className="muted pad">Loading…</div>
 
   const stateTxt = !info.engineOk ? 'engine unavailable' : info.running ? 'running' : info.exists ? 'stopped' : reachable ? 'reachable' : 'not created'
-  const stateTone = info.running || reachable ? 'green' : info.exists ? 'amber' : 'muted'
   // Pode gerir (criar tópicos/subscrições, publicar, ver mensagens) se o emulador responde — container local OU remoto/existente.
   const canManage = info.running || reachable
 
   return (
     <main className="service">
-      <div className="svc-header">
-        <div className="grow">
-          <h2><RefreshIcon onRefresh={() => Promise.all([loadInfo(FRESH), loadEntities()])} title="Refresh — re-run the commands that check the emulator" />Pub/Sub <span className={`pubsub-pill tone-${stateTone}`}>{stateTxt}</span></h2>
-          <div className="muted small">
-            Local emulator{info.running ? <> on <span className="mono">localhost:{info.port}</span></> : ''} · container <span className="mono">{info.containerName}</span> · configure it in <b>Settings → Pub/Sub</b>; container logs on the <b>Containers</b> page.
-            {!info.engineOk && <span className="text-error"> Container engine unavailable{info.error ? `: ${info.error}` : ''}.</span>}
-          </div>
-        </div>
+      <ContainerHeader
+        title="Pub/Sub"
+        onRefresh={() => Promise.all([loadInfo(FRESH), loadEntities()])} refreshTitle="Refresh — re-run the commands that check the emulator"
+        container={info.containerName} image={info.image}
+        state={!info.engineOk ? 'unknown' : info.running || reachable ? 'running' : info.exists ? 'stopped' : 'missing'}
+        stateLabel={stateTxt}
+        port={info.port}
+        error={!info.engineOk ? `container engine unavailable${info.error ? `: ${info.error}` : ''}` : undefined}
+        note={<>Local emulator · project <span className="mono">{info.projectId}</span> · configure it in <b>Settings → Pub/Sub</b>; container logs on the <b>Containers</b> page.</>}
+      >
         {/* Barra de estado: uma ação (criar/arrancar ou parar) + ⓘ com as env vars para os microserviços */}
         <div className="pubsub-status-actions">
           {!info.running && (
@@ -263,7 +264,7 @@ export function PubSubView({ settings, scan, notify, fail }: {
             )}
           </span>
         </div>
-      </div>
+      </ContainerHeader>
     <div className="pubsub-view pubsub-split">
       {/* ESQUERDA — publicar de teste (topo), e colapsados: o que está nos microserviços + gestão manual */}
       <div className="pubsub-left">

@@ -646,7 +646,7 @@ export interface RedisInfo {
   hits?: number
   misses?: number
   /** estado do container gerido pela app (se o motor de containers estiver disponível) */
-  container?: { exists: boolean; running: boolean; name: string }
+  container?: { exists: boolean; running: boolean; name: string; image?: string }
 }
 export interface RedisKeyMeta {
   key: string

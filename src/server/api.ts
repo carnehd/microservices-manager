@@ -727,7 +727,7 @@ const redisCfg = () => getSettings().redis
 apiRouter.get('/redis/info', h((req) => cached('redis:info', fresh(req), async () => {
   const info = await redisOps.info(redisCfg())
   try {
-    info.container = { name: redisCfg().containerName, ...(await containerState(containerCmd(), redisCfg().containerName)) }
+    info.container = { name: redisCfg().containerName, image: redisCfg().image, ...(await containerState(containerCmd(), redisCfg().containerName)) }
   } catch {
     /* motor de containers indisponível */
   }

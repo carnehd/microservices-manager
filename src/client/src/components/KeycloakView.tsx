@@ -4,7 +4,7 @@ import { api, FRESH, POLL, type ReqOpts } from '../api'
 import type { LogsApi } from '../hooks'
 import { KcAdminPanel } from './KcAdminPanel'
 import { LogView } from './LogView'
-import { Badge, RefreshIcon, StatusPill, isActive } from './common'
+import { Badge, ContainerHeader, isActive } from './common'
 
 type Tab = 'logs' | 'providers' | 'admin'
 const KC_ID = 'keycloak'
@@ -117,18 +117,16 @@ export function KeycloakView({
 
   return (
     <main className="service">
-      <div className="svc-header">
-        <div className="grow">
-          <h2><RefreshIcon onRefresh={() => refreshInfo(FRESH)} title="Refresh — re-run the commands that check the Keycloak container" />Keycloak</h2>
-          <div className="muted mono small">
-            🐳 container <b>{kc.containerName}</b> · {kc.image}
-            {info?.container && <> · {info.container.running ? 'running' : info.container.exists ? `stopped (${info.container.status ?? ''})` : 'not yet created'}</>}
-            {info?.engineError && <span className="text-error"> · {info.engineError}</span>}
-            {' '}· port {kc.httpPort} · admin <b>{kc.adminUser}</b>
-          </div>
-        </div>
-        <StatusPill state={state} port={kc.httpPort} />
-      </div>
+      <ContainerHeader
+        title="Keycloak"
+        onRefresh={() => refreshInfo(FRESH)} refreshTitle="Refresh — re-run the commands that check the Keycloak container"
+        container={kc.containerName} image={kc.image}
+        state={!info?.container || info.engineError ? 'unknown' : info.container.running ? 'running' : info.container.exists ? 'stopped' : 'missing'}
+        stateLabel={info?.container?.exists && !info.container.running && info.container.status ? `stopped (${info.container.status})` : undefined}
+        port={kc.httpPort}
+        error={info?.engineError}
+        note={<>admin <b>{kc.adminUser}</b>{isActive(state) && state?.mode ? <> · {state.mode}</> : null}</>}
+      />
 
       <div className="actions">
         {!running && (

@@ -194,6 +194,16 @@ p { margin: 0 0 8px; }
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px;
   background: var(--bg-3); border: 1px solid var(--border); font-size: 12px; white-space: nowrap;
 }
+/* Cabeçalho comum Keycloak / Redis / Pub/Sub: container + imagem por baixo do título; estado e porto em tags à direita */
+.ctr-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ctr-name { color: var(--text); font-weight: 600; }
+.ctr-sep { color: var(--muted); }
+.ctr-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 10px; }
+.tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; background: var(--bg-3); border: 1px solid var(--border); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.tag-green { color: var(--green); border-color: rgba(62, 201, 123, .4); }
+.tag-amber { color: var(--amber); border-color: rgba(240, 180, 41, .4); }
+.tag-muted { color: var(--muted); }
+.tag-port { font-family: var(--mono); color: var(--accent); background: var(--accent-soft); border-color: transparent; }
 .pill-running { border-color: rgba(62, 201, 123, .4); }
 .pill-crashed { border-color: rgba(239, 91, 91, .5); color: var(--red); }
 

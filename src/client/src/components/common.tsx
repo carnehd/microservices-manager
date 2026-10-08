@@ -82,6 +82,41 @@ export function ConsoleOut({ text, placeholder, className = '', style }: { text:
   )
 }
 
+export type ContainerState = 'running' | 'stopped' | 'missing' | 'unknown'
+const CONTAINER_LABEL: Record<ContainerState, string> = { running: 'running', stopped: 'stopped', missing: 'not created', unknown: 'unknown' }
+
+/**
+ * Cabeçalho comum das páginas Keycloak / Redis / Pub/Sub: título (com ícone de refresh), por baixo o container usado
+ * e a imagem; à direita o estado e o porto em tags, seguidos de ações opcionais (children).
+ */
+export function ContainerHeader({ title, onRefresh, refreshTitle, container, image, state, stateLabel, port, note, error, children }: {
+  title: string; onRefresh: () => void | Promise<unknown>; refreshTitle: string
+  container: string; image?: string
+  state: ContainerState; stateLabel?: string; port?: number
+  /** linha extra por baixo (ex.: estatísticas do Redis, dica de configuração) */
+  note?: ReactNode; error?: string; children?: ReactNode
+}) {
+  const tone = state === 'running' ? 'green' : state === 'stopped' ? 'amber' : 'muted'
+  return (
+    <div className="svc-header">
+      <div className="grow">
+        <h2><RefreshIcon onRefresh={onRefresh} title={refreshTitle} />{title}</h2>
+        <div className="ctr-line muted small">
+          container <span className="mono ctr-name">{container}</span>
+          {image && <><span className="ctr-sep">·</span><span className="mono" title="image">{image}</span></>}
+          {error && <span className="text-error"> · {error}</span>}
+        </div>
+        {note && <div className="muted small">{note}</div>}
+      </div>
+      <div className="ctr-tags">
+        <span className={`tag tag-${tone}`} title="container state"><StatusDot status={state === 'running' ? 'running' : 'stopped'} />{stateLabel ?? CONTAINER_LABEL[state]}</span>
+        {port ? <span className="tag tag-port" title="port on the host">:{port}</span> : null}
+        {children}
+      </div>
+    </div>
+  )
+}
+
 export function StatusPill({ state, port }: { state?: ProcState; port?: number }) {
   const now = useNow()
   const st = state?.status ?? 'stopped'
