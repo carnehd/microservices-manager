@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { AppSettings, ContainerInfo, ScanResult } from '../../../shared/types'
 import { api } from '../api'
 
@@ -9,6 +9,37 @@ function hostPortFor8085(ports: string[]): number | null {
   const n = m ? Number(m[1]) : NaN
   return Number.isFinite(n) && n > 0 ? n : null
 }
+
+// Cartão colapsável das Settings: fechado mostra um resumo dos valores atuais; a pesquisa abre só os que correspondem.
+function Card({ title, summary, open, hidden, onToggle, children }: {
+  title: string; summary: string; open: boolean; hidden: boolean; onToggle: () => void; children: ReactNode
+}) {
+  if (hidden) return null
+  return (
+    <section className={`card${open ? ' open' : ''}`}>
+      <button type="button" className="card-head" onClick={onToggle} aria-expanded={open}>
+        <span className="card-chevron">{open ? '▾' : '▸'}</span>
+        <h3>{title}</h3>
+        {!open && <span className="card-summary ellipsis" title={summary}>{summary}</span>}
+      </button>
+      {open && children}
+    </section>
+  )
+}
+
+const OPEN_KEY = 'msm.settings.open'
+// Palavras-chave de cada cartão (título + nomes dos campos), para a pesquisa abrir o cartão certo
+const CARD_KEYWORDS: Record<string, string> = {
+  root: 'Root folder microservices root folder projects scan',
+  java: 'Java / Maven JAVA_HOME jdk maven command mvn wrapper mvnw local repository .m2 settings.xml nexus mirror base debug port jdwp',
+  git: 'Git git command executable git.exe path branch',
+  containers: 'Containers & proxy container command podman docker engine proxy HTTP_PROXY HTTPS_PROXY NO_PROXY company network pull images',
+  keycloak: 'Keycloak container name image version providers folder spi jar h2 data folder http port admin user password extra arguments start-dev import-realm',
+  redis: 'Redis host port db password container image',
+  pubsub: 'Pub/Sub pubsub local emulator container name port project id image gcr.io existing container',
+  postgres: 'Database (Postgres) postgres postgresql container port superuser password image psql'
+}
+const CARD_IDS = Object.keys(CARD_KEYWORDS)
 
 export function SettingsView({
   settings, scan, onSave, onRescan, pickFolder, notify
@@ -40,6 +71,22 @@ export function SettingsView({
   useEffect(() => {
     void api.containers.list().then(setContainers).catch(() => setContainers([]))
   }, [])
+
+  // Cartões abertos (por omissão todos fechados; lembrado por browser) e pesquisa de campos.
+  const [open, setOpen] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as string[]) } catch { return new Set() }
+  })
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const setOpenAll = (ids: Iterable<string>): void => {
+    const s = new Set(ids)
+    setOpen(s)
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify([...s])) } catch { /* sem storage */ }
+  }
+  const toggle = (id: string): void => { const s = new Set(open); if (s.has(id)) s.delete(id); else s.add(id); setOpenAll(s) }
+  const matches = (id: string): boolean => !q || CARD_KEYWORDS[id].toLowerCase().includes(q)
+  const card = (id: string, title: string, summary: string) => ({ title, summary, onToggle: () => toggle(id), hidden: !matches(id), open: q ? true : open.has(id) })
+  const tag = (image: string): string => image.split(':').pop() ?? image
 
   const pick = async (cur: string | undefined, apply: (dir: string) => void): Promise<void> => {
     const dir = await pickFolder(cur)
@@ -106,8 +153,13 @@ export function SettingsView({
       <div className="svc-header"><h2>Settings</h2></div>
       <div className="tab-body">
         <div className="config">
-          <section>
-            <h3>Root folder</h3>
+          <div className="settings-tools">
+            <input className="input grow" placeholder="Find a setting… (e.g. proxy, git, port, password)" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+            {query && <button className="btn btn-sm btn-ghost" onClick={() => setQuery('')} title="clear search">✕</button>}
+            <button className="btn btn-sm" onClick={() => setOpenAll(CARD_IDS)}>Expand all</button>
+            <button className="btn btn-sm" onClick={() => setOpenAll([])}>Collapse all</button>
+          </div>
+          <Card {...card('root', 'Root folder', form.rootFolder || 'not set')}>
             <div className="form">
               <label>
                 Microservices root folder
@@ -117,10 +169,9 @@ export function SettingsView({
                 </div>
               </label>
             </div>
-          </section>
+          </Card>
 
-          <section>
-            <h3>Java / Maven</h3>
+          <Card {...card('java', 'Java / Maven', `JAVA_HOME ${form.javaHome || 'system'} · ${form.mavenCommand || 'mvn'}${form.preferWrapper ? ' (prefer mvnw)' : ''} · debug from :${form.baseDebugPort}`)}>
             <div className="form">
               <label>
                 JAVA_HOME (empty = system default)
@@ -148,15 +199,29 @@ export function SettingsView({
                 <input className="input mono" value={form.mavenSettingsFile ?? ''} onChange={(e) => set('mavenSettingsFile', e.target.value)} placeholder="empty = ~/.m2/settings.xml (C:\Users\you\.m2\settings.xml)" />
               </label>
               <label>
-                Git command (Git tab) — empty = <span className="mono">git</span> from PATH, or Git for Windows in the usual folders
+                Base debug port (each service uses base + index; can be changed per service)
+                <input className="input" type="number" value={form.baseDebugPort} onChange={(e) => set('baseDebugPort', Number(e.target.value))} />
+              </label>
+            </div>
+          </Card>
+
+          <Card {...card('git', 'Git', form.gitCommand || 'git from PATH')}>
+            <div className="form">
+              <label>
+                <span>Git command (Git tab) — empty = <span className="mono">git</span> from PATH, or Git for Windows in the usual folders</span>
                 <input className="input mono" value={form.gitCommand ?? ''} onChange={(e) => set('gitCommand', e.target.value)} placeholder="C:\Program Files\Git\cmd\git.exe" />
               </label>
+            </div>
+          </Card>
+
+          <Card {...card('containers', 'Containers & proxy', `${form.containerCommand || 'podman'} · proxy ${form.httpProxy || form.httpsProxy ? 'on' : 'off'}`)}>
+            <div className="form">
               <label>
                 Container command (Containers tab)
                 <input className="input mono" value={form.containerCommand ?? ''} onChange={(e) => set('containerCommand', e.target.value)} placeholder="podman (or docker)" />
               </label>
               <label>
-                Proxy for podman/docker — HTTP_PROXY / HTTPS_PROXY (image pulls; the podman machine picks it up on the next <b>Start machine</b>)
+                <span>Proxy for podman/docker — HTTP_PROXY / HTTPS_PROXY (image pulls; the podman machine picks it up on the next <b>Start machine</b>)</span>
                 <div className="row">
                   <input className="input mono grow" value={form.httpProxy ?? ''} onChange={(e) => set('httpProxy', e.target.value)} placeholder="http://proxy.company.com:3128 (empty = no proxy)" />
                   <input className="input mono grow" value={form.httpsProxy ?? ''} onChange={(e) => set('httpsProxy', e.target.value)} placeholder="HTTPS_PROXY (empty = same as HTTP_PROXY)" />
@@ -166,15 +231,10 @@ export function SettingsView({
                 NO_PROXY — hosts that bypass the proxy
                 <input className="input mono" value={form.noProxy ?? ''} onChange={(e) => set('noProxy', e.target.value)} placeholder="empty = localhost,127.0.0.1,::1,host.containers.internal,host.docker.internal" />
               </label>
-              <label>
-                Base debug port (each service uses base + index; can be changed per service)
-                <input className="input" type="number" value={form.baseDebugPort} onChange={(e) => set('baseDebugPort', Number(e.target.value))} />
-              </label>
             </div>
-          </section>
+          </Card>
 
-          <section>
-            <h3>Keycloak</h3>
+          <Card {...card('keycloak', 'Keycloak', `${form.keycloak.containerName} · :${form.keycloak.httpPort} · ${tag(form.keycloak.image)} · admin ${form.keycloak.adminUser}`)}>
             <div className="form">
               <div className="form-row">
                 <label>Container name<input className="input mono" value={form.keycloak.containerName} onChange={(e) => setKc('containerName', e.target.value)} /></label>
@@ -215,10 +275,9 @@ export function SettingsView({
                 <input className="input mono" value={form.keycloak.extraArgs ?? ''} onChange={(e) => setKc('extraArgs', e.target.value)} placeholder="--import-realm --log-level=DEBUG" />
               </label>
             </div>
-          </section>
+          </Card>
 
-          <section>
-            <h3>Redis</h3>
+          <Card {...card('redis', 'Redis', `${form.redis.host}:${form.redis.port}/${form.redis.db} · ${form.redis.containerName} · ${tag(form.redis.image)}`)}>
             <div className="form">
               <div className="form-row">
                 <label>Host<input className="input mono" value={form.redis.host} onChange={(e) => setRedis('host', e.target.value)} /></label>
@@ -232,10 +291,9 @@ export function SettingsView({
               </div>
               <p className="muted small">The "Create and start container" button on the Redis page runs <span className="mono">podman run -d --name &lt;container&gt; -p &lt;port&gt;:6379 &lt;image&gt;</span> (with <span className="mono">--requirepass</span> if there is a password).</p>
             </div>
-          </section>
+          </Card>
 
-          <section>
-            <h3>Pub/Sub (local emulator)</h3>
+          <Card {...card('pubsub', 'Pub/Sub (local emulator)', `${form.pubsub.containerName} · :${form.pubsub.port} · project ${form.pubsub.projectId}`)}>
             <div className="form">
               <div className="form-row">
                 <label>Container name<input className="input mono" value={form.pubsub.containerName} onChange={(e) => setPubsub('containerName', e.target.value)} /></label>
@@ -261,10 +319,9 @@ export function SettingsView({
               </label>
               <p className="muted small">Changes to image, port or container name only take effect on a new container — Stop the emulator on the Pub/Sub page and Create it again.</p>
             </div>
-          </section>
+          </Card>
 
-          <section>
-            <h3>Database (Postgres)</h3>
+          <Card {...card('postgres', 'Database (Postgres)', `${form.postgres.containerName} · :${form.postgres.port} · ${form.postgres.superUser} · ${tag(form.postgres.image)}`)}>
             <div className="form">
               <div className="form-row">
                 <label>Container<input className="input mono" value={form.postgres.containerName} onChange={(e) => setPg('containerName', e.target.value)} placeholder="name of an existing container or the managed one" /></label>
@@ -277,8 +334,9 @@ export function SettingsView({
               <label>Image (only if the app creates the container)<input className="input mono" style={{ minWidth: 300 }} value={form.postgres.image} onChange={(e) => setPg('image', e.target.value)} /></label>
               <p className="muted small">To use an existing Postgres container, put its name here (the app creates databases via <span className="mono">exec … psql</span>). The image/port only matter when the app creates the container.</p>
             </div>
-          </section>
+          </Card>
 
+          {q && !CARD_IDS.some(matches) && <p className="muted">No setting matches "{query}".</p>}
           <div><button className="btn btn-primary" onClick={save}>Save</button></div>
         </div>
       </div>

@@ -251,7 +251,15 @@ p { margin: 0 0 8px; }
 /* Config / forms */
 .config { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; }
 .config section { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
-.config section > h3 { color: var(--accent); } /* título dos cards (Settings, etc.) na cor de destaque */
+.config section h3 { color: var(--accent); } /* título dos cards (Settings, etc.) na cor de destaque */
+/* Settings: pesquisa + cartões colapsáveis com resumo */
+.settings-tools { display: flex; align-items: center; gap: 8px; }
+.card-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; color: var(--text); font: inherit; min-width: 0; }
+.card-head h3 { margin: 0; white-space: nowrap; }
+.card.open .card-head { margin-bottom: 12px; }
+.card-chevron { color: var(--muted); font-size: 12px; width: 12px; flex: none; }
+.card-summary { margin-left: auto; color: var(--muted); font-size: 12px; font-family: var(--mono); min-width: 0; }
+.card-head:hover h3 { text-decoration: underline; }
 table.kv { border-collapse: collapse; width: 100%; }
 table.kv th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 12px 4px 0; width: 180px; vertical-align: top; white-space: nowrap; }
 table.kv td { padding: 4px 0; word-break: break-all; white-space: pre-wrap; }
