@@ -251,6 +251,7 @@ p { margin: 0 0 8px; }
 /* Config / forms */
 .config { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; }
 .config section { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.config section > h3 { color: var(--accent); } /* título dos cards (Settings, etc.) na cor de destaque */
 table.kv { border-collapse: collapse; width: 100%; }
 table.kv th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 12px 4px 0; width: 180px; vertical-align: top; white-space: nowrap; }
 table.kv td { padding: 4px 0; word-break: break-all; white-space: pre-wrap; }
