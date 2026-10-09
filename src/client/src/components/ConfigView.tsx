@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ServiceInfo, ServiceSettings } from '../../../shared/types'
 
 function envToText(env?: Record<string, string>): string {
@@ -17,8 +17,12 @@ function textToEnv(text: string): Record<string, string> | undefined {
 }
 
 export function ConfigView({
-  svc, settings, defaultDebugPort, onSave
-}: { svc: ServiceInfo; settings: ServiceSettings; defaultDebugPort: number; onSave: (ss: ServiceSettings) => Promise<void> }) {
+  svc, settings, defaultDebugPort, onSave, focusEnv
+}: { svc: ServiceInfo; settings: ServiceSettings; defaultDebugPort: number; onSave: (ss: ServiceSettings) => Promise<void>; /** incrementa para focar a área das env vars (botão {…} no cabeçalho) */ focusEnv?: number }) {
+  const envRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    if (focusEnv) { envRef.current?.scrollIntoView({ block: 'center' }); envRef.current?.focus() }
+  }, [focusEnv])
   const [profile, setProfile] = useState(settings.profile ?? '')
   const [port, setPort] = useState(settings.port ? String(settings.port) : '')
   const [jvmArgs, setJvmArgs] = useState(settings.jvmArgs ?? '')
@@ -129,7 +133,7 @@ export function ConfigView({
           )}
           <label>
             Environment variables (one per line, KEY=value)
-            <textarea className="input mono" rows={4} value={env} onChange={(e) => setEnv(e.target.value)} placeholder={'DB_HOST=localhost\nSPRING_DATASOURCE_PASSWORD=secret'} />
+            <textarea ref={envRef} className="input mono" rows={4} value={env} onChange={(e) => setEnv(e.target.value)} placeholder={'DB_HOST=localhost\nSPRING_DATASOURCE_PASSWORD=secret'} />
           </label>
           <div>
             <button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>

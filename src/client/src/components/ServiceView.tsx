@@ -36,6 +36,7 @@ export function ServiceView({
   fail: (e: unknown) => void
 }) {
   const [tab, setTab] = useState<Tab>('logs')
+  const [focusEnv, setFocusEnv] = useState(0) // botão {…}: abre Configuration e foca as env vars
   const [deploying, setDeploying] = useState(false)
   const [defaultDebugPort, setDefaultDebugPort] = useState<number>(settings.baseDebugPort)
 
@@ -116,8 +117,8 @@ export function ServiceView({
               </button>
             )}
             {svc.kind === 'spring-boot' && (
-              <button type="button" className="btn btn-lg btn-icon" onClick={() => setTab('config')} title="Configuration — environment variables (passed with -e to the container), profile, port, JVM args" aria-label="Configuration">
-                <img src={icons.pencil} alt="" width={14} height={14} />
+              <button type="button" className="btn btn-lg btn-icon mono" onClick={() => { setTab('config'); setFocusEnv((n) => n + 1) }} title="Environment variables for the start (Configuration) — passed to the process, or with -e to the container" aria-label="Environment variables">
+                {'{…}'}
               </button>
             )}
             {svc.kind === 'keycloak-spi' && (
@@ -185,7 +186,7 @@ export function ServiceView({
         {tab === 'srdb' && <SrDatabaseView svc={svc} settings={settings} running={running} notify={notify} fail={fail} onSettingsChanged={onSettingsChanged} />}
         {tab === 'git' && <GitView svc={svc} notify={notify} fail={fail} onChanged={onGitChanged} />}
         {tab === 'config' && (
-          <ConfigView svc={svc} settings={ss} defaultDebugPort={defaultDebugPort} onSave={(next) => onSaveServiceSettings(svc.id, next)} />
+          <ConfigView svc={svc} settings={ss} defaultDebugPort={defaultDebugPort} onSave={(next) => onSaveServiceSettings(svc.id, next)} focusEnv={focusEnv} />
         )}
       </div>
     </main>
