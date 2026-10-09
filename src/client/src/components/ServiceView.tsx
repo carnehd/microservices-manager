@@ -109,6 +109,12 @@ export function ServiceView({
                 <img src={icons.play} alt="" width={15} height={15} />+ dependencies ({deps.length})
               </button>
             )}
+            {svc.kind === 'spring-boot' && !active && (
+              <button className="btn btn-lg" onClick={() => onStart(svc.id, ss.debug ? 'container-debug' : 'container')}
+                title={`mvn package, then run the jar in a container (Settings → Java image; target/ mounted at /app; port ${ss.port ?? svc.port ?? 8080} published${ss.debug ? `; JDWP on localhost:${debugPort}` : ''}). Inside the container "localhost" is the container itself — point to the host with host.containers.internal (env vars in Configuration).`}>
+                🐳 Container{ss.debug ? ' · debug' : ''}
+              </button>
+            )}
             {svc.kind === 'keycloak-spi' && (
               <>
                 <button className="btn btn-primary btn-lg" disabled={active || deploying} onClick={() => deploy(true)} title="mvn package + copy the jar to providers + restart Keycloak">

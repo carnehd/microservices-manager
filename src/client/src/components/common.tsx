@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { ProcState, ProcStatus, ServiceKind } from '../../../shared/types'
+import { CONTAINER_MODES, DEBUG_MODES, type ProcState, type ProcStatus, type ServiceKind } from '../../../shared/types'
 
 export const STATUS_LABEL: Record<ProcStatus, string> = {
   stopped: 'stopped',
@@ -123,13 +123,14 @@ export function StatusPill({ state, port }: { state?: ProcState; port?: number }
   const st = state?.status ?? 'stopped'
   const active = isActive(state)
   const p = state?.detectedPort ?? port
-  const title = active ? [state?.pid ? `pid ${state.pid}` : '', state?.startedAt ? `${fmtDuration(now - state.startedAt)} ago` : '', state?.mode === 'debug' ? 'debug mode' : ''].filter(Boolean).join(' · ') : undefined
+  const title = active ? [state?.pid ? `pid ${state.pid}` : '', state?.startedAt ? `${fmtDuration(now - state.startedAt)} ago` : '', state?.mode && DEBUG_MODES.has(state.mode) ? 'debug mode' : '', state?.mode && CONTAINER_MODES.has(state.mode) ? 'in a container' : ''].filter(Boolean).join(' · ') : undefined
   return (
     <span className={`pill pill-${st}`} title={title}>
       <StatusDot status={st} />
       {STATUS_LABEL[st]}
       {active && p ? ` · port ${p}` : ''}
-      {active && state?.mode === 'debug' && state.debugPort ? ` · debug ${state.debugPort}` : ''}
+      {active && state?.mode && CONTAINER_MODES.has(state.mode) ? ' · container' : ''}
+      {active && state?.mode && DEBUG_MODES.has(state.mode) && state.debugPort ? ` · debug ${state.debugPort}` : ''}
       {st === 'crashed' ? ` (exit ${state?.exitCode ?? '?'})` : ''}
     </span>
   )

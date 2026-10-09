@@ -1,13 +1,13 @@
 import { Router, type Request, type Response } from 'express'
 import { promises as fs, readdirSync, statSync } from 'fs'
 import { basename, delimiter, join } from 'path'
-import { BUILD_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type SrDbInfo, type StartMode } from '../shared/types'
+import { BUILD_MODES, CONTAINER_MODES, DEBUG_MODES, type AppSettings, type DeployResult, type EnvMix, type HttpRequest, type HttpResponse, type JarFile, type JarInfo, type KcExportResult, type KcNewRealm, type KeycloakInfo, type ProcState, type ScanResult, type ServiceInfo, type ServiceSettings, type SrDbInfo, type StartMode } from '../shared/types'
 import { addSseClient, broadcast } from './events'
 import { recentCmds, withSilent } from './cmdlog'
 import { cached, invalidateCache } from './cache'
 import { listDirs, openPath, openTerminal } from './fsapi'
 import { searchInServices } from './search'
-import { containerAction, containerState, engineInfo, ensureContainer, execContainerCommand, listContainers, listImages, machineAction, removeImage, waitForState, type ContainerAction } from './containers'
+import { containerAction, containerState, engineInfo, ensureContainer, execContainerCommand, listContainers, listImages, machineAction, podmanExtraEnv, removeImage, waitForState, type ContainerAction } from './containers'
 import * as redisOps from './redis'
 import { depsCommandArgs, listDeps } from './deps'
 import { parse as parseYaml } from 'yaml'
@@ -70,6 +70,10 @@ function mavenGlobalArgs(settings: AppSettings, ss?: ServiceSettings): string[] 
   return args
 }
 
+const DEFAULT_JAVA_IMAGE = 'docker.io/library/eclipse-temurin:21-jre'
+/** Nome do container quando um microserviço arranca em modo container. */
+const containerNameFor = (svcId: string): string => `msm-${svcId}`
+
 function defaultDebugPort(svcId: string, settings: AppSettings): number {
   const boots = lastScan?.services.filter((s) => s.kind === 'spring-boot') ?? []
   return settings.baseDebugPort + Math.max(0, boots.findIndex((s) => s.id === svcId))
@@ -85,30 +89,38 @@ function startService(id: string, mode: StartMode): ProcState {
   const skip = ss.skipTests !== false ? ['-DskipTests'] : []
   // Toggle "spotless": corre spotless:apply antes de compilar/arrancar (formata o código primeiro).
   const spot = ss.spotless ? ['spotless:apply'] : []
+  const isRun = mode === 'run' || mode === 'debug' || CONTAINER_MODES.has(mode)
+  const inContainer = CONTAINER_MODES.has(mode)
+  const jvm: string[] = []
   if (mode === 'build') args.push(...spot, ...skip, 'package')
   else if (mode === 'clean-build') args.push('clean', ...spot, ...skip, 'package')
   else if (mode === 'clean-install') args.push('clean', ...spot, ...skip, 'install')
   else if (mode === 'spotless') args.push('spotless:apply')
-  else if (mode === 'run' || mode === 'debug') {
+  else if (isRun) {
     if (svc.kind !== 'spring-boot') throw new Error('Only Spring Boot projects can be started')
-    // Só spring-boot:run + as opções da página (Skip tests, Spotless): sem install prévio, mesmo em multi-módulo
-    args.push(...spot, ...skip, 'spring-boot:run')
-    if (ss.profile?.trim()) args.push(`-Dspring-boot.run.profiles=${ss.profile.trim()}`)
-    if (ss.port) args.push(`-Dspring-boot.run.arguments=--server.port=${ss.port}`)
-    const jvm: string[] = []
-    if (mode === 'debug') {
+    if (DEBUG_MODES.has(mode)) {
       debugPort = ss.debugPort || defaultDebugPort(id, settings)
-      jvm.push(`-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:${debugPort}`)
+      // No container o JDWP escuta sempre em 5005; a porta de debug do host é mapeada para lá (-p debugPort:5005)
+      jvm.push(`-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:${inContainer ? 5005 : debugPort}`)
     }
     if (ss.jvmArgs?.trim()) jvm.push(ss.jvmArgs.trim())
-    if (jvm.length) args.push(`-Dspring-boot.run.jvmArguments="${jvm.join(' ')}"`)
+    if (inContainer) {
+      // Container: primeiro o jar (package), depois `podman run` com target/ montado — o comando é montado mais abaixo
+      args.push(...(svc.runModule ? ['-pl', quote(svc.runModule), '-am'] : []), ...spot, ...skip, 'package')
+    } else {
+      // Só spring-boot:run + as opções da página (Skip tests, Spotless): sem install prévio, mesmo em multi-módulo
+      args.push(...spot, ...skip, 'spring-boot:run')
+      if (ss.profile?.trim()) args.push(`-Dspring-boot.run.profiles=${ss.profile.trim()}`)
+      if (ss.port) args.push(`-Dspring-boot.run.arguments=--server.port=${ss.port}`)
+      if (jvm.length) args.push(`-Dspring-boot.run.jvmArguments="${jvm.join(' ')}"`)
+    }
   } else throw new Error(`Invalid mode: ${String(mode)}`)
   if (ss.extraArgs?.trim()) args.push(ss.extraArgs.trim())
 
   // Microserviço SR: injeta as env vars da BD (Host JVM) a partir do spec detetado + Postgres da app.
   // O Liquibase cria as tabelas no arranque; a BD/schema são criados na tab "Base de Dados".
   let srExtra: Record<string, string> = {}
-  if (svc.srDatabase && (mode === 'run' || mode === 'debug')) {
+  if (svc.srDatabase && isRun) {
     const pg = settings.postgres
     const ps = settings.pubsub
     const port = ss.port ?? svc.srDatabase.httpPort ?? 8100
@@ -130,12 +142,38 @@ function startService(id: string, mode: StartMode): ProcState {
 
   const mvn = [quote(mavenCommand(svc, settings)), ...mavenGlobalArgs(settings, ss)].join(' ')
   // Multi-módulo: corre só o módulo executável (os irmãos vêm do repositório local, como no IDE após um install)
-  const commandLine = [mvn, ...((mode === 'run' || mode === 'debug') && svc.runModule ? ['-pl', quote(svc.runModule)] : []), ...args].join(' ')
+  let commandLine = [mvn, ...((mode === 'run' || mode === 'debug') && svc.runModule ? ['-pl', quote(svc.runModule)] : []), ...args].join(' ')
+  let env = buildEnv(settings, { ...srExtra, ...ss.env })
+  if (inContainer) {
+    // mvn package && podman run --rm (em primeiro plano: os logs ficam na tab Logs e o Stop pára o container)
+    const cc = containerCmd()
+    const name = containerNameFor(id)
+    const port = ss.port ?? svc.port ?? 8080
+    const image = settings.javaImage?.trim() || DEFAULT_JAVA_IMAGE
+    const hostAlias = /docker/i.test(cc) ? 'host.docker.internal' : 'host.containers.internal'
+    // Dentro do container "localhost" é o próprio container: o host (Postgres, Keycloak, emulador…) é hostAlias
+    const toHost = (v: string): string => v.replace(/\blocalhost\b|\b127\.0\.0\.1\b/g, hostAlias)
+    const inner: Record<string, string> = { SERVER_PORT: String(port) }
+    if (ss.profile?.trim()) inner.SPRING_PROFILES_ACTIVE = ss.profile.trim()
+    for (const [k, v] of Object.entries({ ...srExtra, ...ss.env })) inner[k] = toHost(v)
+    inner.SERVER_PORT = String(port)
+    if (jvm.length) inner.JAVA_TOOL_OPTIONS = jvm.join(' ') // jdwp + JVM args, sem mexer no comando
+    const runArgs = [
+      cc, 'run', '--rm', '--name', name, '-p', `${port}:${port}`,
+      ...(debugPort ? ['-p', `${debugPort}:5005`] : []),
+      '-v', quote(`${join(svc.moduleDir ?? svc.path, 'target')}:/app:ro`),
+      ...Object.entries(inner).flatMap(([k, v]) => ['-e', quote(`${k}=${v}`)]),
+      image, 'sh', '-c', '"exec java -jar /app/*.jar"'
+    ]
+    // rm -f primeiro: limpa um container com o mesmo nome deixado por um Stop forçado
+    commandLine = `${cc} rm -f ${name} ${isWin ? '&' : ';'} ${commandLine} && ${runArgs.join(' ')}`
+    env = { ...env, ...podmanExtraEnv() }
+  }
   const state = pm.start({
     id,
     commandLine,
     cwd: svc.path,
-    env: buildEnv(settings, { ...srExtra, ...ss.env }),
+    env,
     mode,
     debugPort
   })
@@ -451,7 +489,13 @@ apiRouter.post('/scan', h(async (req) => {
 apiRouter.get('/procs', h(() => pm.getStates()))
 apiRouter.get('/procs/:id/logs', h((req) => pm.getLogs(param(req, 'id'))))
 apiRouter.delete('/procs/:id/logs', h((req) => pm.clearLogs(param(req, 'id'))))
-apiRouter.post('/procs/:id/stop', h((req) => pm.stop(param(req, 'id'))))
+apiRouter.post('/procs/:id/stop', h(async (req) => {
+  const id = param(req, 'id')
+  const st = pm.getState(id)
+  await pm.stop(id)
+  // Modo container: no Windows o kill do cliente podman não pára o container — remove-o também
+  if (st.mode && CONTAINER_MODES.has(st.mode)) await containerAction(containerCmd(), 'remove', containerNameFor(id), true).catch(() => undefined)
+}))
 
 /** Resolve um token (id ou nome) para um id de serviço spring-boot existente. */
 function resolveDep(token: string): string | undefined {

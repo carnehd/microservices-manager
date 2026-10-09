@@ -70,9 +70,13 @@ function cmdLine(cmd: string, args: string[]): string {
   return `${px ? `HTTPS_PROXY=${redactProxy(px)} ` : ''}${cmd} ${args.join(' ')}`
 }
 
-function podmanEnv(): NodeJS.ProcessEnv {
+/** Variáveis extra para qualquer comando podman/docker (auth isolada + proxy) — também para os corridos pelo ProcessManager. */
+export function podmanExtraEnv(): Record<string, string> {
   const a = authPaths()
-  return { ...process.env, ...(a ? { DOCKER_CONFIG: a.dir, REGISTRY_AUTH_FILE: a.auth } : {}), ...proxyEnv() }
+  return { ...(a ? { DOCKER_CONFIG: a.dir, REGISTRY_AUTH_FILE: a.auth } : {}), ...proxyEnv() }
+}
+function podmanEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, ...podmanExtraEnv() }
 }
 
 /** Corre o comando e devolve stdout; erros trazem o stderr do podman/docker (mensagens úteis). */

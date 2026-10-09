@@ -141,7 +141,10 @@ export interface ScanResult {
 }
 
 export type ProcStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed'
-export type StartMode = 'run' | 'debug' | 'build' | 'clean-build' | 'clean-install' | 'spotless'
+/** container / container-debug: empacota o jar e corre-o num container do JRE (Settings → Java image) em vez de spring-boot:run */
+export type StartMode = 'run' | 'debug' | 'container' | 'container-debug' | 'build' | 'clean-build' | 'clean-install' | 'spotless'
+export const DEBUG_MODES: ReadonlySet<StartMode> = new Set<StartMode>(['debug', 'container-debug'])
+export const CONTAINER_MODES: ReadonlySet<StartMode> = new Set<StartMode>(['container', 'container-debug'])
 export const BUILD_MODES: ReadonlySet<StartMode> = new Set<StartMode>(['build', 'clean-build', 'clean-install', 'spotless'])
 
 export interface ProcState {
@@ -251,6 +254,8 @@ export interface AppSettings {
   containerCommand?: string
   /** Executável do git (caminho completo ou nome no PATH). Vazio = "git" do PATH, ou o Git for Windows nas pastas habituais. */
   gitCommand?: string
+  /** Imagem JRE usada para "Start in container" (o jar do target/ é montado em /app); vazio = eclipse-temurin:21-jre */
+  javaImage?: string
   /** Proxy passado (como HTTP_PROXY/HTTPS_PROXY/NO_PROXY) aos comandos podman/docker — pulls de imagens, arranque da máquina. Vazio = sem proxy. */
   httpProxy?: string
   httpsProxy?: string

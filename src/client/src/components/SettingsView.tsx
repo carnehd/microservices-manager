@@ -33,7 +33,7 @@ const CARD_KEYWORDS: Record<string, string> = {
   root: 'Root folder microservices root folder projects scan',
   java: 'Java / Maven JAVA_HOME jdk maven command mvn wrapper mvnw local repository .m2 settings.xml nexus mirror base debug port jdwp',
   git: 'Git git command executable git.exe path branch',
-  containers: 'Containers & proxy container command podman docker engine proxy HTTP_PROXY HTTPS_PROXY NO_PROXY company network pull images',
+  containers: 'Containers & proxy container command podman docker engine proxy HTTP_PROXY HTTPS_PROXY NO_PROXY company network pull images java image jre start in container',
   keycloak: 'Keycloak container name image version providers folder spi jar h2 data folder http port admin user password extra arguments start-dev import-realm',
   redis: 'Redis host port db password container image',
   pubsub: 'Pub/Sub pubsub local emulator container name port project id image gcr.io existing container',
@@ -106,6 +106,7 @@ export function SettingsView({
       baseDebugPort: Number(form.baseDebugPort) || 5005,
       containerCommand: (form.containerCommand ?? '').trim(),
       gitCommand: (form.gitCommand ?? '').trim(),
+      javaImage: (form.javaImage ?? '').trim(),
       httpProxy: (form.httpProxy ?? '').trim(),
       httpsProxy: (form.httpsProxy ?? '').trim(),
       noProxy: (form.noProxy ?? '').trim(),
@@ -219,6 +220,10 @@ export function SettingsView({
               <label>
                 Container command (Containers tab)
                 <input className="input mono" value={form.containerCommand ?? ''} onChange={(e) => set('containerCommand', e.target.value)} placeholder="podman (or docker)" />
+              </label>
+              <label>
+                Java image for "Start in container" (the service jar from target/ is mounted at /app and run with java -jar)
+                <input className="input mono" value={form.javaImage ?? ''} onChange={(e) => set('javaImage', e.target.value)} placeholder="docker.io/library/eclipse-temurin:21-jre (swap for an internal mirror if docker.io is blocked)" />
               </label>
               <label>
                 <span>Proxy for podman/docker — HTTP_PROXY / HTTPS_PROXY (image pulls; the podman machine picks it up on the next <b>Start machine</b>)</span>
