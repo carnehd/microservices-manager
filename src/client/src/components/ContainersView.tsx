@@ -6,16 +6,6 @@ import { LogView } from './LogView'
 import { Badge, ConsoleOut, RefreshIcon, StatusDot, isActive } from './common'
 
 type Tab = 'containers' | 'images' | 'logs' | 'console' | 'shell'
-// Atalhos da shell dentro do container (correm com sh -c)
-const SHELL_SNIPPETS: Array<{ label: string; cmd: string }> = [
-  { label: 'ls /app', cmd: 'ls -la /app' },
-  { label: 'env', cmd: 'env | sort' },
-  { label: 'processes', cmd: 'ps -ef 2>/dev/null || ps' },
-  { label: 'os', cmd: 'cat /etc/os-release' },
-  { label: 'java -version', cmd: 'java -version 2>&1' },
-  { label: 'disk', cmd: 'df -h' },
-  { label: 'ports', cmd: '(ss -tlnp || netstat -tlnp) 2>/dev/null' }
-]
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
 const REFRESH_MS = 5000
 
@@ -354,10 +344,6 @@ export function ContainersView({
                 }} />
               <button className="btn btn-sm btn-primary" disabled={!shellTarget || !shellCmd.trim() || busy === 'shell'} onClick={() => void runShell(shellCmd)}>{busy === 'shell' ? 'Running…' : '▶ Run'}</button>
             </div>
-            <div className="toolbar" style={{ flexWrap: 'wrap' }}>
-              {SHELL_SNIPPETS.map((s) => <button key={s.label} className="btn btn-sm" disabled={!shellTarget || busy === 'shell'} title={s.cmd} onClick={() => void runShell(s.cmd)}>{s.label}</button>)}
-            </div>
-            <p className="muted small pad">Each line runs as <span className="mono">{cmdName} exec {shellTarget || '<container>'} sh -c "…"</span> — no interactive session, so <span className="mono">cd</span> does not persist (use the Dir field); pipes, redirects and <span className="mono">&&</span> work. Commands show in the Terminal below.</p>
             <ConsoleOut text={shellLog} placeholder="(no output yet — pick a container and run a command)" />
           </div>
         )}
