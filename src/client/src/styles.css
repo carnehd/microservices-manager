@@ -108,6 +108,7 @@ p { margin: 0 0 8px; }
   display: inline-flex; align-items: center; gap: 8px; vertical-align: middle;
 }
 .btn-lg { height: 40px; padding: 0 16px; font-size: 13px; }
+.btn-icon { padding: 0; width: 40px; justify-content: center; } /* só ícone (ex.: Configuration ao lado de Container) */
 .btn.btn-sm { height: 28px; padding: 0 9px; font-size: 12px; }
 .btn:hover:not(:disabled) { border-color: var(--btn-hover-border); background: var(--btn-hover-bg); } /* por tema: no claro ficava preto */
 .btn:disabled { opacity: .45; cursor: default; }

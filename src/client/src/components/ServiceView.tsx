@@ -115,6 +115,11 @@ export function ServiceView({
                 🐳 Container{ss.debug ? ' · debug' : ''}
               </button>
             )}
+            {svc.kind === 'spring-boot' && (
+              <button type="button" className="btn btn-lg btn-icon" onClick={() => setTab('config')} title="Configuration — environment variables (passed with -e to the container), profile, port, JVM args" aria-label="Configuration">
+                <img src={icons.pencil} alt="" width={14} height={14} />
+              </button>
+            )}
             {svc.kind === 'keycloak-spi' && (
               <>
                 <button className="btn btn-primary btn-lg" disabled={active || deploying} onClick={() => deploy(true)} title="mvn package + copy the jar to providers + restart Keycloak">
