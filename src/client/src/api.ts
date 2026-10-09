@@ -128,7 +128,9 @@ export const api = {
     logs: (id: string) => req<ProcState>('POST', `/api/containers/${enc(id)}/logs`),
     removeImage: (id: string, force = false) => req<string>('DELETE', `/api/containers/images/${enc(id)}${force ? '?force=1' : ''}`),
     machine: (name: string, action: 'start' | 'stop') => req<string>('POST', `/api/containers/machine/${enc(name || '_default')}/${action}`),
-    exec: (args: string[]) => req<ContainerExecResult>('POST', '/api/containers/exec', { args })
+    exec: (args: string[]) => req<ContainerExecResult>('POST', '/api/containers/exec', { args }),
+    /** comando corrido dentro do container (sh -c) */
+    shell: (container: string, command: string, cwd?: string) => req<ContainerExecResult>('POST', `/api/containers/${enc(container)}/shell`, { command, cwd })
   },
   pubsub: {
     info: (o?: ReqOpts) => req<PubSubInfo>('GET', '/api/pubsub/info', undefined, o),

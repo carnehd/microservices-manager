@@ -7,7 +7,7 @@ import { recentCmds, withSilent } from './cmdlog'
 import { cached, invalidateCache } from './cache'
 import { listDirs, openPath, openTerminal } from './fsapi'
 import { searchInServices } from './search'
-import { containerAction, containerState, engineInfo, ensureContainer, execContainerCommand, listContainers, listImages, machineAction, podmanExtraEnv, removeImage, waitForState, type ContainerAction } from './containers'
+import { containerAction, containerState, engineInfo, ensureContainer, execContainerCommand, execInContainer, listContainers, listImages, machineAction, podmanExtraEnv, removeImage, waitForState, type ContainerAction } from './containers'
 import * as redisOps from './redis'
 import { depsCommandArgs, listDeps } from './deps'
 import { parse as parseYaml } from 'yaml'
@@ -739,6 +739,8 @@ const CONTAINER_ACTIONS = new Set<ContainerAction>(['start', 'stop', 'restart', 
 
 apiRouter.get('/containers/engine', h((req) => cached('containers:engine', fresh(req), () => engineInfo(containerCmd()))))
 apiRouter.post('/containers/exec', h((req) => execContainerCommand(containerCmd(), Array.isArray(req.body?.args) ? req.body.args : [])))
+// Shell dentro de um container (antes de /containers/:id/:action, que apanharia "shell" como ação)
+apiRouter.post('/containers/:id/shell', h((req) => execInContainer(containerCmd(), param(req, 'id'), str(req.body?.command), str(req.body?.cwd) || undefined)))
 apiRouter.get('/containers', h((req) => cached('containers:list', fresh(req), () => listContainers(containerCmd()))))
 apiRouter.get('/containers/images', h((req) => cached('containers:images', fresh(req), () => listImages(containerCmd()))))
 apiRouter.delete('/containers/images/:id', h((req) => removeImage(containerCmd(), param(req, 'id'), req.query.force === '1')))

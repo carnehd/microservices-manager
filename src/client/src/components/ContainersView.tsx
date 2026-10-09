@@ -5,7 +5,17 @@ import type { LogsApi } from '../hooks'
 import { LogView } from './LogView'
 import { Badge, ConsoleOut, RefreshIcon, StatusDot, isActive } from './common'
 
-type Tab = 'containers' | 'images' | 'logs' | 'console'
+type Tab = 'containers' | 'images' | 'logs' | 'console' | 'shell'
+// Atalhos da shell dentro do container (correm com sh -c)
+const SHELL_SNIPPETS: Array<{ label: string; cmd: string }> = [
+  { label: 'ls /app', cmd: 'ls -la /app' },
+  { label: 'env', cmd: 'env | sort' },
+  { label: 'processes', cmd: 'ps -ef 2>/dev/null || ps' },
+  { label: 'os', cmd: 'cat /etc/os-release' },
+  { label: 'java -version', cmd: 'java -version 2>&1' },
+  { label: 'disk', cmd: 'df -h' },
+  { label: 'ports', cmd: '(ss -tlnp || netstat -tlnp) 2>/dev/null' }
+]
 type Notify = (t: string, k?: 'error' | 'info' | 'success') => void
 const REFRESH_MS = 5000
 
@@ -38,6 +48,32 @@ export function ContainersView({
   const [consoleLog, setConsoleLog] = useState('')
   const [selCmd, setSelCmd] = useState(0)
   const cmdName = engine?.command ?? 'podman'
+  // Shell dentro de um container: alvo, comando, pasta de trabalho, histórico (↑/↓) e saída
+  const [shellTarget, setShellTarget] = useState('')
+  const [shellCmd, setShellCmd] = useState('')
+  const [shellCwd, setShellCwd] = useState('')
+  const [shellLog, setShellLog] = useState('')
+  const [shellHist, setShellHist] = useState<string[]>([])
+  const [histIdx, setHistIdx] = useState(-1)
+  const openShell = (c: ContainerInfo): void => { setShellTarget(c.name); setTab('shell') }
+  const runShell = async (command: string): Promise<void> => {
+    const text = command.trim()
+    if (!text || !shellTarget) return
+    setBusy('shell')
+    setShellLog((prev) => `${prev ? prev + '\n' : ''}$ ${shellTarget}${shellCwd ? `:${shellCwd}` : ''} › ${text}`)
+    setShellHist((h) => [text, ...h.filter((x) => x !== text)].slice(0, 50))
+    setHistIdx(-1)
+    setShellCmd('')
+    try {
+      const r = await api.containers.shell(shellTarget, text, shellCwd.trim() || undefined)
+      const out = [r.stdout.trimEnd(), r.stderr.trimEnd()].filter(Boolean).join('\n')
+      setShellLog((prev) => `${prev}\n${out || '(no output)'}${r.code ? `\n✗ exit ${r.code}` : ''} — ${r.ms} ms`)
+    } catch (e) {
+      setShellLog((prev) => `${prev}\n✗ ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const appendConsole = useCallback((text: string) => setConsoleLog((prev) => (prev ? prev + '\n' : '') + text), [])
   // Corre um comando (consola): regista o comando e o output (stdout/stderr + código/tempo).
@@ -182,6 +218,7 @@ export function ContainersView({
         <button className={tab === 'images' ? 'active' : ''} onClick={() => setTab('images')}>Images {images ? <span className="count">{images.length}</span> : null}</button>
         <button className={tab === 'logs' ? 'active' : ''} disabled={!logTarget} onClick={() => setTab('logs')}>Logs{logTarget ? `: ${logTarget}` : ''}</button>
         <button className={tab === 'console' ? 'active' : ''} onClick={() => setTab('console')}>Console</button>
+        <button className={tab === 'shell' ? 'active' : ''} onClick={() => setTab('shell')}>Shell{shellTarget ? <span className="muted small"> · {shellTarget}</span> : null}</button>
       </div>
 
       <div className="tab-body">
@@ -218,6 +255,7 @@ export function ContainersView({
                             <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => act(c.id, () => api.containers.action(c.name, 'start'), `${c.name} started`)}>▶ Start</button>
                           )}
                           <button className="btn btn-sm" disabled={!!busy} onClick={() => openLogs(c)}>Logs</button>
+                          {up && <button className="btn btn-sm" disabled={!!busy} onClick={() => openShell(c)} title={`run commands inside ${c.name} (${cmdName} exec … sh -c)`}>&gt;_ Shell</button>}
                           <button className="btn btn-sm btn-danger" disabled={!!busy}
                             onClick={() => { if (confirm(`Remove the container ${c.name}?${up ? ' It is running — it will be stopped.' : ''}`)) void act(c.id, () => api.containers.action(c.name, 'remove', up), `${c.name} removed`) }}>Remove</button>
                         </td>
@@ -287,6 +325,40 @@ export function ContainersView({
             </div>
             <p className="muted small pad">Read-only diagnostic commands against <span className="mono">{cmdName}</span>. Starting/stopping the Podman machine also shows here.</p>
             <ConsoleOut text={consoleLog} placeholder="(no output yet — run a command or start/stop the machine)" />
+          </div>
+        )}
+
+        {tab === 'shell' && (
+          <div className="config">
+            <div className="toolbar">
+              <label className="inline">Container
+                <select className="input mono" value={shellTarget} onChange={(e) => setShellTarget(e.target.value)}>
+                  <option value="">choose a running container…</option>
+                  {(containers ?? []).filter((c) => c.state === 'running').map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+              </label>
+              <label className="inline">Dir
+                <input className="input mono" style={{ width: 120 }} value={shellCwd} onChange={(e) => setShellCwd(e.target.value)} placeholder="/ (default)" title="working directory for each command (podman exec -w)" />
+              </label>
+              <button className="btn btn-sm" disabled={!shellLog} onClick={() => setShellLog('')}>Clear</button>
+            </div>
+            <div className="toolbar">
+              <span className="mono muted">{shellTarget || '—'} ›</span>
+              <input className="input mono grow" style={{ maxWidth: 'none' }} value={shellCmd} disabled={!shellTarget || busy === 'shell'} autoFocus spellCheck={false}
+                placeholder={shellTarget ? 'command to run inside the container (sh -c) — Enter runs, ↑/↓ history' : 'choose a container first'}
+                onChange={(e) => { setShellCmd(e.target.value); setHistIdx(-1) }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); void runShell(shellCmd) }
+                  else if (e.key === 'ArrowUp' && shellHist.length) { e.preventDefault(); const i = Math.min(histIdx + 1, shellHist.length - 1); setHistIdx(i); setShellCmd(shellHist[i]) }
+                  else if (e.key === 'ArrowDown') { e.preventDefault(); const i = histIdx - 1; setHistIdx(i); setShellCmd(i < 0 ? '' : shellHist[i]) }
+                }} />
+              <button className="btn btn-sm btn-primary" disabled={!shellTarget || !shellCmd.trim() || busy === 'shell'} onClick={() => void runShell(shellCmd)}>{busy === 'shell' ? 'Running…' : '▶ Run'}</button>
+            </div>
+            <div className="toolbar" style={{ flexWrap: 'wrap' }}>
+              {SHELL_SNIPPETS.map((s) => <button key={s.label} className="btn btn-sm" disabled={!shellTarget || busy === 'shell'} title={s.cmd} onClick={() => void runShell(s.cmd)}>{s.label}</button>)}
+            </div>
+            <p className="muted small pad">Each line runs as <span className="mono">{cmdName} exec {shellTarget || '<container>'} sh -c "…"</span> — no interactive session, so <span className="mono">cd</span> does not persist (use the Dir field); pipes, redirects and <span className="mono">&&</span> work. Commands show in the Terminal below.</p>
+            <ConsoleOut text={shellLog} placeholder="(no output yet — pick a container and run a command)" />
           </div>
         )}
       </div>

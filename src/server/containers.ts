@@ -114,7 +114,23 @@ export async function execContainerCommand(cmd: string, args: string[]): Promise
   if (!clean.length) throw new Error('No command given')
   if (!EXEC_ALLOWED.has(clean[0])) throw new Error(`Command "${clean[0]}" is not allowed in the console (read-only commands only)`)
   for (const a of clean) if (!EXEC_ARG_RE.test(a)) throw new Error(`Invalid argument: ${a}`)
-  const command = cmdLine(cmd, clean)
+  return execCapture(cmd, clean, cmdLine(cmd, clean))
+}
+
+/**
+ * Corre um comando dentro de um container (consola "Shell" da página Containers): `podman exec [-w dir] <c> sh -c "<cmd>"`.
+ * O texto vai como um único argumento para o `sh` do container (sem shell do host), por isso pipes/aspas funcionam como lá.
+ */
+export async function execInContainer(cmd: string, container: string, command: string, workdir?: string): Promise<ContainerExecResult> {
+  if (!/^[\w][\w.-]*$/.test(container)) throw new Error('Invalid container name')
+  const text = command.trim()
+  if (!text) throw new Error('No command given')
+  if (workdir && !/^[\w./-]+$/.test(workdir)) throw new Error('Invalid working directory')
+  const args = ['exec', ...(workdir ? ['-w', workdir] : []), container, 'sh', '-c', text]
+  return execCapture(cmd, args, cmdLine(cmd, ['exec', ...(workdir ? ['-w', workdir] : []), container, 'sh', '-c', JSON.stringify(text)]))
+}
+
+async function execCapture(cmd: string, clean: string[], command: string): Promise<ContainerExecResult> {
   logCmd(command, 'cmd')
   const start = Date.now()
   try {
